@@ -5,11 +5,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'dart:math';
 
+// 載入 flutterfire configure 產生的設定檔
+import 'firebase_options.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  // 初始化 Firebase，指定對應平台的參數
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(DepressionApp());
 }
+
 
 class DepressionApp extends StatelessWidget {
   @override
