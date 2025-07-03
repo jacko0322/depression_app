@@ -235,6 +235,7 @@ class _MainHomePageState extends State<MainHomePage> {
     RelaxationPage(),
     EducationPage(),
     CharacterPage(),
+    WateringGamePage(), // 新增澆水任務頁面
   ];
 
   @override
@@ -265,12 +266,15 @@ class _MainHomePageState extends State<MainHomePage> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.blue[600],
         unselectedItemColor: Colors.grey[600],
+        selectedFontSize: 12,
+        unselectedFontSize: 10,
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.task_alt), label: '每日任務'),
           BottomNavigationBarItem(icon: Icon(Icons.mood), label: '心情記錄'),
           BottomNavigationBarItem(icon: Icon(Icons.spa), label: '舒緩心理'),
           BottomNavigationBarItem(icon: Icon(Icons.school), label: '資源教育'),
           BottomNavigationBarItem(icon: Icon(Icons.pets), label: '角色培養'),
+          BottomNavigationBarItem(icon: Icon(Icons.eco), label: '澆水任務'),
         ],
       ),
     );
@@ -1693,5 +1697,922 @@ class _CharacterPageState extends State<CharacterPage> {
         SnackBar(content: Text('操作失敗: $e')),
       );
     }
+  }
+}
+
+// ==================== 澆水任務整合開始 ====================
+
+// 澆水任務主頁面
+class WateringGamePage extends StatefulWidget {
+  @override
+  State<WateringGamePage> createState() => _WateringGamePageState();
+}
+
+class _WateringGamePageState extends State<WateringGamePage> with TickerProviderStateMixin {
+  late AnimationController _treeAnimationController;
+  late Animation<double> _treeScaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _treeAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _treeScaleAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
+      CurvedAnimation(
+        parent: _treeAnimationController,
+        curve: Curves.elasticOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _treeAnimationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _completeTask(String taskName) async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    String today = DateTime.now().toIso8601String().split('T')[0];
+    String docId = '${userId}_${today}_${taskName.replaceAll(' ', '_')}';
+
+    await FirebaseFirestore.instance.collection('watering_tasks').doc(docId).set({
+      'userId': userId,
+      'taskName': taskName,
+      'isCompleted': true,
+      'date': today,
+      'completedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // 播放樹長大動畫
+    _treeAnimationController.forward().then((_) {
+      _treeAnimationController.reverse();
+    });
+
+    // 顯示完成提示
+    _showTaskCompletedDialog(taskName);
+  }
+
+  void _showTaskCompletedDialog(String taskName) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('🎉 任務完成！'),
+          content: Text('你完成了「$taskName」任務！\n樹獲得了一次澆水 💧'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('繼續'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _getTreeStage(int waterCount) {
+    if (waterCount == 0) return '🌰 種子';
+    if (waterCount < 5) return '🌱 幼苗';
+    if (waterCount < 10) return '🌿 小樹';
+    if (waterCount < 15) return '🌳 中樹';
+    if (waterCount < 20) return '🌲 快成熟';
+    return '🎄 成熟的大樹！';
+  }
+
+  Color _getBackgroundColor(int waterCount) {
+    double progress = waterCount / 20.0;
+    return Color.lerp(Colors.brown.shade50, Colors.green.shade50, progress)!;
+  }
+
+  Future<void> _resetGame() async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    String today = DateTime.now().toIso8601String().split('T')[0];
+
+    // 刪除今日所有任務記錄
+    var batch = FirebaseFirestore.instance.batch();
+    var taskDocs = await FirebaseFirestore.instance
+        .collection('watering_tasks')
+        .where('userId', isEqualTo: userId)
+        .where('date', isEqualTo: today)
+        .get();
+
+    for (var doc in taskDocs.docs) {
+      batch.delete(doc.reference);
+    }
+
+    await batch.commit();
+  }
+
+  void _openTaskDetail(String taskName) {
+    Widget taskWidget;
+
+    switch (taskName) {
+      case '喝水 💧':
+        taskWidget = DrinkingTask(onCompleted: () => _completeTask(taskName));
+        break;
+      case '運動 🏃‍♂️':
+        taskWidget = ExerciseTask(onCompleted: () => _completeTask(taskName));
+        break;
+      case '冥想 🧘':
+        taskWidget = MeditationTask(onCompleted: () => _completeTask(taskName));
+        break;
+      case '寫心情日記 📖':
+        taskWidget = DiaryTask(onCompleted: () => _completeTask(taskName));
+        break;
+      default:
+        return;
+    }
+
+    Navigator.of(context).push(MaterialPageRoute(builder: (context) => taskWidget));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return Center(child: Text('請先登入'));
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('watering_tasks')
+          .where('userId', isEqualTo: userId)
+          .where('date', isEqualTo: DateTime.now().toIso8601String().split('T')[0])
+          .snapshots(),
+      builder: (context, snapshot) {
+        Map<String, bool> completions = {};
+        if (snapshot.hasData) {
+          for (var doc in snapshot.data!.docs) {
+            var data = doc.data() as Map<String, dynamic>;
+            completions[data['taskName']] = data['isCompleted'] ?? false;
+          }
+        }
+
+        int waterCount = completions.values.where((completed) => completed).length;
+        const int totalWater = 4; // 4個任務
+
+        final List<Map<String, dynamic>> tasks = [
+          {'name': '喝水 💧', 'subtitle': '8杯水目標'},
+          {'name': '運動 🏃‍♂️', 'subtitle': '5分鐘運動'},
+          {'name': '冥想 🧘', 'subtitle': '3分鐘冥想'},
+          {'name': '寫心情日記 📖', 'subtitle': '記錄今日感受'},
+        ];
+
+        return Scaffold(
+          backgroundColor: _getBackgroundColor(waterCount),
+          body: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Text(
+                  '澆水養樹 🌱',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[800],
+                  ),
+                ),
+                SizedBox(height: 20),
+
+                // 進度條
+                Container(
+                  width: double.infinity,
+                  height: 15,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.grey.shade300,
+                  ),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: waterCount / totalWater,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        gradient: LinearGradient(
+                          colors: [Colors.lightBlue, Colors.green.shade400],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 樹的狀態
+                AnimatedBuilder(
+                  animation: _treeScaleAnimation,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _treeScaleAnimation.value,
+                      child: Text(
+                        _getTreeStage(waterCount),
+                        style: const TextStyle(
+                          fontSize: 64,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 15),
+
+                Text(
+                  '目前已澆水：$waterCount / $totalWater 次',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+
+                const SizedBox(height: 25),
+
+                const Text(
+                  '📋 完成每日任務來澆水：',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+
+                const SizedBox(height: 15),
+
+                // 任務列表
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: tasks.length,
+                    itemBuilder: (context, index) {
+                      var task = tasks[index];
+                      bool isCompleted = completions[task['name']] ?? false;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 8,
+                          ),
+                          title: Text(
+                            task['name'],
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                              decoration: isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: isCompleted ? Colors.grey : Colors.black87,
+                            ),
+                          ),
+                          subtitle: Text(task['subtitle']),
+                          trailing: isCompleted
+                              ? Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade100,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.check,
+                              color: Colors.green.shade700,
+                              size: 20,
+                            ),
+                          )
+                              : ElevatedButton(
+                            onPressed: () => _openTaskDetail(task['name']),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green.shade600,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            child: const Text('開始'),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // 完成提示
+                if (waterCount >= totalWater) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.yellow.shade100, Colors.orange.shade100],
+                      ),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.orange, width: 2),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          '🎊 恭喜完成！ 🎊',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text('你成功讓樹長大了！', style: TextStyle(fontSize: 18)),
+                        const SizedBox(height: 15),
+                        ElevatedButton(
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (BuildContext context) {
+                                return AlertDialog(
+                                  title: const Text('重置遊戲'),
+                                  content: const Text('確定要重新開始嗎？這會清除所有進度。'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(),
+                                      child: const Text('取消'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.of(context).pop();
+                                        _resetGame();
+                                      },
+                                      child: const Text('確定'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 30,
+                              vertical: 12,
+                            ),
+                          ),
+                          child: const Text('重新開始'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// 任務狀態類別
+class TaskStatus {
+  bool isCompleted;
+
+  TaskStatus({this.isCompleted = false});
+}
+
+// 喝水任務
+class DrinkingTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const DrinkingTask({super.key, required this.onCompleted});
+
+  @override
+  State<DrinkingTask> createState() => _DrinkingTaskState();
+}
+
+class _DrinkingTaskState extends State<DrinkingTask> {
+  int glasses = 0;
+  final int targetGlasses = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('喝水任務 💧'),
+        backgroundColor: Colors.blue.shade600,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.blue.shade50,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  '今日喝水目標',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '$glasses / $targetGlasses 杯',
+                  style: const TextStyle(
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 30),
+                LinearProgressIndicator(
+                  value: glasses / targetGlasses,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey[300],
+                  color: Colors.blue,
+                ),
+                const SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: glasses < targetGlasses
+                      ? () {
+                    setState(() {
+                      glasses++;
+                      if (glasses >= targetGlasses) {
+                        Future.delayed(
+                          const Duration(milliseconds: 500),
+                              () {
+                            widget.onCompleted();
+                            Navigator.of(context).pop();
+                          },
+                        );
+                      }
+                    });
+                  }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: const Text('喝一杯水 🥤', style: TextStyle(fontSize: 18)),
+                ),
+                const SizedBox(height: 20),
+                if (glasses >= targetGlasses)
+                  const Text(
+                    '🎉 太棒了！你完成了今日喝水目標！',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 運動任務
+class ExerciseTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const ExerciseTask({super.key, required this.onCompleted});
+
+  @override
+  State<ExerciseTask> createState() => _ExerciseTaskState();
+}
+
+class _ExerciseTaskState extends State<ExerciseTask> {
+  int seconds = 0;
+  final int targetSeconds = 300; // 5分鐘
+  bool isRunning = false;
+  Timer? timer;
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  void _toggleTimer() {
+    if (isRunning) {
+      timer?.cancel();
+    } else {
+      timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() {
+          seconds++;
+          if (seconds >= targetSeconds) {
+            timer.cancel();
+            isRunning = false;
+            widget.onCompleted();
+            Navigator.of(context).pop();
+          }
+        });
+      });
+    }
+    setState(() {
+      isRunning = !isRunning;
+    });
+  }
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('運動任務 🏃‍♂️'),
+        backgroundColor: Colors.orange.shade600,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.orange.shade50,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  '運動計時器',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  _formatTime(seconds),
+                  style: const TextStyle(
+                    fontSize: 64,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '目標：${_formatTime(targetSeconds)}',
+                  style: const TextStyle(fontSize: 18),
+                ),
+                const SizedBox(height: 30),
+                LinearProgressIndicator(
+                  value: seconds / targetSeconds,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey[300],
+                  color: Colors.orange,
+                ),
+                const SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: seconds < targetSeconds ? _toggleTimer : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: Text(
+                    isRunning ? '暫停 ⏸️' : '開始運動 ▶️',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                if (seconds >= targetSeconds)
+                  const Text(
+                    '🎉 太棒了！你完成了運動目標！',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 冥想任務
+class MeditationTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const MeditationTask({super.key, required this.onCompleted});
+
+  @override
+  State<MeditationTask> createState() => _MeditationTaskState();
+}
+
+class _MeditationTaskState extends State<MeditationTask>
+    with TickerProviderStateMixin {
+  int seconds = 0;
+  final int targetSeconds = 180; // 3分鐘
+  bool isRunning = false;
+  Timer? timer;
+  late AnimationController _breatheController;
+  late Animation<double> _breatheAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _breatheController = AnimationController(
+      duration: const Duration(seconds: 4),
+      vsync: this,
+    );
+    _breatheAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _breatheController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    _breatheController.dispose();
+    super.dispose();
+  }
+
+  void _toggleMeditation() {
+    if (isRunning) {
+      timer?.cancel();
+      _breatheController.stop();
+    } else {
+      _breatheController.repeat(reverse: true);
+      timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() {
+          seconds++;
+          if (seconds >= targetSeconds) {
+            timer.cancel();
+            _breatheController.stop();
+            isRunning = false;
+            widget.onCompleted();
+            Navigator.of(context).pop();
+          }
+        });
+      });
+    }
+    setState(() {
+      isRunning = !isRunning;
+    });
+  }
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('冥想任務 🧘'),
+        backgroundColor: Colors.purple.shade600,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.purple.shade50,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  '冥想計時器',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 40),
+                AnimatedBuilder(
+                  animation: _breatheAnimation,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _breatheAnimation.value,
+                      child: Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.purple.shade200,
+                              Colors.purple.shade400,
+                            ],
+                          ),
+                        ),
+                        child: const Center(
+                          child: Text('🧘', style: TextStyle(fontSize: 40)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 40),
+                Text(
+                  _formatTime(seconds),
+                  style: const TextStyle(
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '目標：${_formatTime(targetSeconds)}',
+                  style: const TextStyle(fontSize: 18),
+                ),
+                const SizedBox(height: 30),
+                LinearProgressIndicator(
+                  value: seconds / targetSeconds,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey[300],
+                  color: Colors.purple,
+                ),
+                const SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: seconds < targetSeconds ? _toggleMeditation : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple.shade600,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: Text(
+                    isRunning ? '停止冥想 ⏸️' : '開始冥想 ▶️',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+                if (isRunning) ...[
+                  const SizedBox(height: 20),
+                  const Text(
+                    '深呼吸，跟著圓圈的節奏...',
+                    style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                if (seconds >= targetSeconds)
+                  const Text(
+                    '🎉 太棒了！你完成了冥想！',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 寫日記任務
+class DiaryTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const DiaryTask({super.key, required this.onCompleted});
+
+  @override
+  State<DiaryTask> createState() => _DiaryTaskState();
+}
+
+class _DiaryTaskState extends State<DiaryTask> {
+  final TextEditingController _diaryController = TextEditingController();
+  final int minWords = 50;
+
+  @override
+  void dispose() {
+    _diaryController.dispose();
+    super.dispose();
+  }
+
+  int _getWordCount() {
+    return _diaryController.text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .length;
+  }
+
+  void _completeDiary() {
+    if (_getWordCount() >= minWords) {
+      widget.onCompleted();
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('心情日記 📖'),
+        backgroundColor: Colors.indigo.shade600,
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.indigo.shade50,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '今天是 ${DateTime.now().month}/${DateTime.now().day}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                '寫下你今天的心情和想法...',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: _diaryController,
+                    maxLines: null,
+                    expands: true,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText:
+                      '開始寫下你的心情...\n\n你今天過得怎麼樣？\n有什麼特別的事情發生嗎？\n你現在的感受是什麼？',
+                      hintStyle: TextStyle(color: Colors.grey),
+                    ),
+                    style: const TextStyle(fontSize: 16, height: 1.5),
+                    onChanged: (text) {
+                      setState(() {});
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '字數：${_getWordCount()} / $minWords',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: _getWordCount() >= minWords
+                          ? Colors.green
+                          : Colors.grey,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: _getWordCount() >= minWords
+                        ? _completeDiary
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 30,
+                        vertical: 12,
+                      ),
+                    ),
+                    child: const Text('完成日記', style: TextStyle(fontSize: 16)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
