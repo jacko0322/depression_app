@@ -230,12 +230,10 @@ class _MainHomePageState extends State<MainHomePage> {
   int _currentIndex = 0;
 
   final List<Widget> _pages = [
-    DailyTasksPage(),
+    IntegratedGrowthPage(), // 整合的成長頁面
     MoodRecordPage(),
     RelaxationPage(),
     EducationPage(),
-    CharacterPage(),
-    WateringGamePage(), // 新增澆水任務頁面
   ];
 
   @override
@@ -269,121 +267,1042 @@ class _MainHomePageState extends State<MainHomePage> {
         selectedFontSize: 12,
         unselectedFontSize: 10,
         items: [
-          BottomNavigationBarItem(icon: Icon(Icons.task_alt), label: '每日任務'),
+          BottomNavigationBarItem(icon: Icon(Icons.eco), label: '成長花園'),
           BottomNavigationBarItem(icon: Icon(Icons.mood), label: '心情記錄'),
           BottomNavigationBarItem(icon: Icon(Icons.spa), label: '舒緩心理'),
           BottomNavigationBarItem(icon: Icon(Icons.school), label: '資源教育'),
-          BottomNavigationBarItem(icon: Icon(Icons.pets), label: '角色培養'),
-          BottomNavigationBarItem(icon: Icon(Icons.eco), label: '澆水任務'),
         ],
       ),
     );
   }
 }
 
-// 每日任務頁面
-class DailyTasksPage extends StatefulWidget {
+// 整合的成長頁面（合併每日任務、角色培養、澆水任務）
+class IntegratedGrowthPage extends StatefulWidget {
   @override
-  _DailyTasksPageState createState() => _DailyTasksPageState();
+  _IntegratedGrowthPageState createState() => _IntegratedGrowthPageState();
 }
 
-class _DailyTasksPageState extends State<DailyTasksPage> {
-  final List<Map<String, dynamic>> _tasks = [
-    {'title': '喝足夠的水', 'subtitle': '8杯水', 'icon': Icons.local_drink, 'color': Colors.blue},
-    {'title': '運動10分鐘', 'subtitle': '簡單伸展', 'icon': Icons.fitness_center, 'color': Colors.green},
-    {'title': '冥想5分鐘', 'subtitle': '放鬆心情', 'icon': Icons.self_improvement, 'color': Colors.purple},
-    {'title': '寫心情日記', 'subtitle': '記錄感受', 'icon': Icons.edit, 'color': Colors.orange},
-  ];
+class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with TickerProviderStateMixin {
+  late AnimationController _celebrationController;
+  late Animation<double> _scaleAnimation;
 
   @override
-  Widget build(BuildContext context) {
-    String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return Center(child: Text('請先登入'));
-
-    return Padding(
-      padding: EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '今日任務',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue[800],
-            ),
-          ),
-          SizedBox(height: 20),
-          Expanded(
-            child: StreamBuilder<Map<String, bool>>(
-              stream: _getTodayTasksCompletion(userId),
-              builder: (context, snapshot) {
-                Map<String, bool> completions = snapshot.data ?? {};
-
-                return ListView.builder(
-                  itemCount: _tasks.length,
-                  itemBuilder: (context, index) {
-                    var task = _tasks[index];
-                    bool isCompleted = completions[task['title']] ?? false;
-
-                    return Card(
-                      margin: EdgeInsets.only(bottom: 10),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: task['color'][400],
-                          child: Icon(task['icon'], color: Colors.white),
-                        ),
-                        title: Text(task['title']),
-                        subtitle: Text(task['subtitle']),
-                        trailing: Checkbox(
-                          value: isCompleted,
-                          onChanged: (value) {
-                            _updateTaskCompletion(task['title'], value ?? false);
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+  void initState() {
+    super.initState();
+    _celebrationController = AnimationController(
+      duration: Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
+      CurvedAnimation(parent: _celebrationController, curve: Curves.elasticOut),
     );
   }
 
-  Stream<Map<String, bool>> _getTodayTasksCompletion(String userId) {
-    String today = DateTime.now().toIso8601String().split('T')[0];
-
-    return FirebaseFirestore.instance
-        .collection('daily_tasks')
-        .where('userId', isEqualTo: userId)
-        .where('date', isEqualTo: today)
-        .snapshots()
-        .map((snapshot) {
-      Map<String, bool> completions = {};
-      for (var doc in snapshot.docs) {
-        completions[doc.data()['taskTitle']] = doc.data()['isCompleted'] ?? false;
-      }
-      return completions;
-    });
+  @override
+  void dispose() {
+    _celebrationController.dispose();
+    super.dispose();
   }
 
-  Future<void> _updateTaskCompletion(String taskTitle, bool isCompleted) async {
+  Future<void> _completeTask(String taskTitle) async {
     String? userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
     String today = DateTime.now().toIso8601String().split('T')[0];
     String docId = '${userId}_${today}_${taskTitle.replaceAll(' ', '_')}';
 
+    // 更新每日任務完成狀態
     await FirebaseFirestore.instance.collection('daily_tasks').doc(docId).set({
       'userId': userId,
       'taskTitle': taskTitle,
-      'isCompleted': isCompleted,
+      'isCompleted': true,
       'date': today,
-      'completedAt': isCompleted ? FieldValue.serverTimestamp() : null,
+      'completedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+
+    // 更新寵物狀態
+    await _updatePetStatus(userId);
+
+    // 播放慶祝動畫
+    _celebrationController.forward().then((_) {
+      _celebrationController.reverse();
+    });
+
+    // 顯示完成提示
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('任務完成！🎉 寵物和樹都成長了！（經驗值+5，快樂值+3）'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  Future<void> _updatePetStatus(String userId) async {
+    DocumentSnapshot petDoc = await FirebaseFirestore.instance.collection('pets').doc(userId).get();
+
+    Map<String, dynamic> petData = {};
+    if (petDoc.exists) {
+      petData = petDoc.data() as Map<String, dynamic>;
+    }
+
+    int currentExp = petData['experience'] ?? 0;
+    int currentHappiness = petData['happiness'] ?? 50;
+    int currentLevel = petData['level'] ?? 1;
+
+    int newExp = currentExp + 5;  // 降低經驗值獲取，更符合養成感覺
+    int newHappiness = (currentHappiness + 3).clamp(0, 100);  // 降低快樂值獲取
+    int newLevel = currentLevel;
+
+    // 升級邏輯
+    if (newExp >= 100) {
+      newLevel += 1;
+      newExp = 0;
+    }
+
+    await FirebaseFirestore.instance.collection('pets').doc(userId).set({
+      'name': petData['name'] ?? '小花',
+      'level': newLevel,
+      'experience': newExp,
+      'happiness': newHappiness,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  void _openTaskDetail(String taskTitle) {
+    Widget taskWidget;
+
+    switch (taskTitle) {
+      case '喝足夠的水':
+        taskWidget = DrinkingTask(onCompleted: () => _completeTask(taskTitle));
+        break;
+      case '運動10分鐘':
+        taskWidget = ExerciseTask(onCompleted: () => _completeTask(taskTitle));
+        break;
+      case '冥想5分鐘':
+        taskWidget = MeditationTask(onCompleted: () => _completeTask(taskTitle));
+        break;
+      case '感恩練習':
+        taskWidget = GratitudeTask(onCompleted: () => _completeTask(taskTitle));
+        break;
+      default:
+        return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => taskWidget),
+    );
+  }
+
+  String _getTreeStage(int completedTasks) {
+    if (completedTasks == 0) return '🌰';
+    if (completedTasks == 1) return '🌱';
+    if (completedTasks == 2) return '🌿';
+    if (completedTasks == 3) return '🌳';
+    return '🌲';
+  }
+
+  Color _getBackgroundColor(int completedTasks) {
+    double progress = completedTasks / 4.0;
+    return Color.lerp(Colors.brown.shade50, Colors.green.shade50, progress)!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return Center(child: Text('請先登入'));
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('daily_tasks')
+          .where('userId', isEqualTo: userId)
+          .where('date', isEqualTo: DateTime.now().toIso8601String().split('T')[0])
+          .snapshots(),
+      builder: (context, taskSnapshot) {
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('pets')
+              .doc(userId)
+              .snapshots(),
+          builder: (context, petSnapshot) {
+            // 處理任務數據
+            Map<String, bool> taskCompletions = {};
+            if (taskSnapshot.hasData) {
+              for (var doc in taskSnapshot.data!.docs) {
+                var data = doc.data() as Map<String, dynamic>;
+                taskCompletions[data['taskTitle']] = data['isCompleted'] ?? false;
+              }
+            }
+
+            int completedTasksCount = taskCompletions.values.where((completed) => completed).length;
+
+            // 處理寵物數據
+            Map<String, dynamic> petData = {};
+            if (petSnapshot.hasData && petSnapshot.data!.exists) {
+              petData = petSnapshot.data!.data() as Map<String, dynamic>;
+            } else {
+              petData = {
+                'name': '小花',
+                'level': 1,
+                'experience': 0,
+                'happiness': 50,
+              };
+            }
+
+            final List<Map<String, dynamic>> tasks = [
+              {'title': '喝足夠的水', 'subtitle': '8杯水', 'icon': Icons.local_drink, 'color': Colors.blue},
+              {'title': '運動10分鐘', 'subtitle': '簡單伸展', 'icon': Icons.fitness_center, 'color': Colors.green},
+              {'title': '冥想5分鐘', 'subtitle': '放鬆心情', 'icon': Icons.self_improvement, 'color': Colors.purple},
+              {'title': '感恩練習', 'subtitle': '記錄感恩的事', 'icon': Icons.favorite, 'color': Colors.pink},
+            ];
+
+            return Scaffold(
+              backgroundColor: _getBackgroundColor(completedTasksCount),
+              body: SingleChildScrollView(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    // 標題
+                    Text(
+                      '成長花園 🌱',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[800],
+                      ),
+                    ),
+                    SizedBox(height: 20),
+
+                    // 寵物和樹的狀態區域
+                    Container(
+                      padding: EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              // 寵物區域
+                              Column(
+                                children: [
+                                  Text('我的夥伴', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  SizedBox(height: 10),
+                                  CircleAvatar(
+                                    radius: 40,
+                                    backgroundColor: Colors.pink[100],
+                                    child: Icon(Icons.pets, size: 40, color: Colors.pink[400]),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(petData['name'] ?? '小花', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  Text('Level ${petData['level'] ?? 1}', style: TextStyle(color: Colors.grey[600])),
+                                ],
+                              ),
+                              // 樹區域
+                              Column(
+                                children: [
+                                  Text('成長之樹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  SizedBox(height: 10),
+                                  AnimatedBuilder(
+                                    animation: _scaleAnimation,
+                                    builder: (context, child) {
+                                      return Transform.scale(
+                                        scale: _scaleAnimation.value,
+                                        child: Text(
+                                          _getTreeStage(completedTasksCount),
+                                          style: TextStyle(fontSize: 64),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  Text('今日進度 $completedTasksCount/4', style: TextStyle(color: Colors.grey[600])),
+                                ],
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 15),
+                          // 寵物狀態條
+                          Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Text('經驗值: ${petData['experience'] ?? 0}/100'),
+                                  Spacer(),
+                                  Text('快樂值: ${petData['happiness'] ?? 50}/100'),
+                                ],
+                              ),
+                              SizedBox(height: 5),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: LinearProgressIndicator(
+                                      value: (petData['experience'] ?? 0) / 100.0,
+                                      backgroundColor: Colors.grey[300],
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
+                                    ),
+                                  ),
+                                  SizedBox(width: 20),
+                                  Expanded(
+                                    child: LinearProgressIndicator(
+                                      value: (petData['happiness'] ?? 50) / 100.0,
+                                      backgroundColor: Colors.grey[300],
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[400]!),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    SizedBox(height: 20),
+
+                    // 任務進度條
+                    Container(
+                      width: double.infinity,
+                      height: 15,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.grey[300],
+                      ),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: completedTasksCount / 4,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            gradient: LinearGradient(
+                              colors: [Colors.lightBlue, Colors.green.shade400],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 20),
+
+                    // 任務列表
+                    Text(
+                      '今日任務',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[800],
+                      ),
+                    ),
+                    SizedBox(height: 15),
+
+                    ...tasks.map((task) {
+                      bool isCompleted = taskCompletions[task['title']] ?? false;
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 12),
+                        child: Card(
+                          elevation: 4,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: task['color'][400],
+                              child: Icon(task['icon'], color: Colors.white),
+                            ),
+                            title: Text(
+                              task['title'],
+                              style: TextStyle(
+                                decoration: isCompleted ? TextDecoration.lineThrough : null,
+                                color: isCompleted ? Colors.grey : Colors.black87,
+                              ),
+                            ),
+                            subtitle: Text(task['subtitle']),
+                            trailing: isCompleted
+                                ? Container(
+                              padding: EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.green[100],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.check, color: Colors.green[700], size: 20),
+                            )
+                                : ElevatedButton(
+                              onPressed: () => _openTaskDetail(task['title']),
+                              child: Text('開始'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: task['color'][400],
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+
+                    // 完成慶祝區域
+                    if (completedTasksCount >= 4) ...[
+                      SizedBox(height: 20),
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.yellow.shade100, Colors.orange.shade100],
+                          ),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.orange, width: 2),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              '🎊 今日任務全部完成！ 🎊',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              '你的寵物和樹都成長了！\n明天繼續加油！',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// 喝水任務
+class DrinkingTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const DrinkingTask({Key? key, required this.onCompleted}) : super(key: key);
+
+  @override
+  State<DrinkingTask> createState() => _DrinkingTaskState();
+}
+
+class _DrinkingTaskState extends State<DrinkingTask> {
+  int glasses = 0;
+  final int targetGlasses = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('喝水任務 💧'),
+        backgroundColor: Colors.blue[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.blue[50],
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '今日喝水目標',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 20),
+                Text(
+                  '$glasses / $targetGlasses 杯',
+                  style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 30),
+                LinearProgressIndicator(
+                  value: glasses / targetGlasses,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey[300],
+                  color: Colors.blue,
+                ),
+                SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: glasses < targetGlasses
+                      ? () {
+                    setState(() {
+                      glasses++;
+                      if (glasses >= targetGlasses) {
+                        Future.delayed(Duration(milliseconds: 500), () {
+                          widget.onCompleted();
+                          Navigator.of(context).pop();
+                        });
+                      }
+                    });
+                  }
+                      : null,
+                  child: Text('喝一杯水 🥤', style: TextStyle(fontSize: 18)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[600],
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  ),
+                ),
+                SizedBox(height: 20),
+                if (glasses >= targetGlasses)
+                  Text(
+                    '🎉 太棒了！你完成了今日喝水目標！',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 運動任務
+class ExerciseTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const ExerciseTask({Key? key, required this.onCompleted}) : super(key: key);
+
+  @override
+  State<ExerciseTask> createState() => _ExerciseTaskState();
+}
+
+class _ExerciseTaskState extends State<ExerciseTask> {
+  int seconds = 0;
+  final int targetSeconds = 600; // 10分鐘
+  bool isRunning = false;
+  Timer? timer;
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  void _toggleTimer() {
+    if (isRunning) {
+      timer?.cancel();
+    } else {
+      timer = Timer.periodic(Duration(seconds: 1), (timer) {
+        setState(() {
+          seconds++;
+          if (seconds >= targetSeconds) {
+            timer.cancel();
+            isRunning = false;
+            widget.onCompleted();
+            Navigator.of(context).pop();
+          }
+        });
+      });
+    }
+    setState(() {
+      isRunning = !isRunning;
+    });
+  }
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('運動任務 🏃‍♂️'),
+        backgroundColor: Colors.green[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.green[50],
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '運動計時器',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 20),
+                Text(
+                  _formatTime(seconds),
+                  style: TextStyle(fontSize: 64, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '目標：${_formatTime(targetSeconds)}',
+                  style: TextStyle(fontSize: 18),
+                ),
+                SizedBox(height: 30),
+                LinearProgressIndicator(
+                  value: seconds / targetSeconds,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey[300],
+                  color: Colors.green,
+                ),
+                SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: seconds < targetSeconds ? _toggleTimer : null,
+                  child: Text(
+                    isRunning ? '暫停 ⏸️' : '開始運動 ▶️',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[600],
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  ),
+                ),
+                SizedBox(height: 20),
+                if (seconds >= targetSeconds)
+                  Text(
+                    '🎉 太棒了！你完成了運動目標！',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 冥想任務
+class MeditationTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const MeditationTask({Key? key, required this.onCompleted}) : super(key: key);
+
+  @override
+  State<MeditationTask> createState() => _MeditationTaskState();
+}
+
+class _MeditationTaskState extends State<MeditationTask> with TickerProviderStateMixin {
+  int seconds = 0;
+  final int targetSeconds = 300; // 5分鐘
+  bool isRunning = false;
+  Timer? timer;
+  late AnimationController _breatheController;
+  late Animation<double> _breatheAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _breatheController = AnimationController(
+      duration: Duration(seconds: 4),
+      vsync: this,
+    );
+    _breatheAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
+      CurvedAnimation(parent: _breatheController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    _breatheController.dispose();
+    super.dispose();
+  }
+
+  void _toggleMeditation() {
+    if (isRunning) {
+      timer?.cancel();
+      _breatheController.stop();
+    } else {
+      _breatheController.repeat(reverse: true);
+      timer = Timer.periodic(Duration(seconds: 1), (timer) {
+        setState(() {
+          seconds++;
+          if (seconds >= targetSeconds) {
+            timer.cancel();
+            _breatheController.stop();
+            isRunning = false;
+            widget.onCompleted();
+            Navigator.of(context).pop();
+          }
+        });
+      });
+    }
+    setState(() {
+      isRunning = !isRunning;
+    });
+  }
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('冥想任務 🧘'),
+        backgroundColor: Colors.purple[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.purple[50],
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '冥想計時器',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 40),
+                AnimatedBuilder(
+                  animation: _breatheAnimation,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _breatheAnimation.value,
+                      child: Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [Colors.purple[200]!, Colors.purple[400]!],
+                          ),
+                        ),
+                        child: Center(
+                          child: Text('🧘', style: TextStyle(fontSize: 40)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: 40),
+                Text(
+                  _formatTime(seconds),
+                  style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '目標：${_formatTime(targetSeconds)}',
+                  style: TextStyle(fontSize: 18),
+                ),
+                SizedBox(height: 30),
+                LinearProgressIndicator(
+                  value: seconds / targetSeconds,
+                  minHeight: 10,
+                  backgroundColor: Colors.grey[300],
+                  color: Colors.purple,
+                ),
+                SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: seconds < targetSeconds ? _toggleMeditation : null,
+                  child: Text(
+                    isRunning ? '停止冥想 ⏸️' : '開始冥想 ▶️',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple[600],
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  ),
+                ),
+                if (isRunning) ...[
+                  SizedBox(height: 20),
+                  Text(
+                    '深呼吸，跟著圓圈的節奏...',
+                    style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
+                  ),
+                ],
+                SizedBox(height: 20),
+                if (seconds >= targetSeconds)
+                  Text(
+                    '🎉 太棒了！你完成了冥想！',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 寫日記任務（移除字數限制）
+class DiaryTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const DiaryTask({Key? key, required this.onCompleted}) : super(key: key);
+
+  @override
+  State<DiaryTask> createState() => _DiaryTaskState();
+}
+
+class _DiaryTaskState extends State<DiaryTask> {
+  final TextEditingController _diaryController = TextEditingController();
+
+  @override
+  void dispose() {
+    _diaryController.dispose();
+    super.dispose();
+  }
+
+  void _completeDiary() {
+    if (_diaryController.text.trim().isNotEmpty) {
+      widget.onCompleted();
+      Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請至少寫一些內容')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('心情日記 📖'),
+        backgroundColor: Colors.orange[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.orange[50],
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '今天是 ${DateTime.now().month}/${DateTime.now().day}',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              Text(
+                '寫下你今天的心情和想法...',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 20),
+              Expanded(
+                child: Container(
+                  padding: EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 5,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: _diaryController,
+                    maxLines: null,
+                    expands: true,
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '開始寫下你的心情...\n\n你今天過得怎麼樣？\n有什麼特別的事情發生嗎？\n你現在的感受是什麼？',
+                      hintStyle: TextStyle(color: Colors.grey),
+                    ),
+                    style: TextStyle(fontSize: 16, height: 1.5),
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
+              Center(
+                child: ElevatedButton(
+                  onPressed: _completeDiary,
+                  child: Text('完成日記', style: TextStyle(fontSize: 16)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange[600],
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+
+// 感恩練習任務
+class GratitudeTask extends StatefulWidget {
+  final VoidCallback onCompleted;
+
+  const GratitudeTask({Key? key, required this.onCompleted}) : super(key: key);
+
+  @override
+  State<GratitudeTask> createState() => _GratitudeTaskState();
+}
+
+class _GratitudeTaskState extends State<GratitudeTask> {
+  final List<TextEditingController> _controllers = [
+    TextEditingController(),
+    TextEditingController(),
+    TextEditingController(),
+  ];
+
+  final List<String> _prompts = [
+    '今天讓你感到感恩的人是誰？',
+    '今天發生了什麼讓你覺得幸運的事？',
+    '今天有什麼小事讓你感到開心？',
+  ];
+
+  @override
+  void dispose() {
+    for (var controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  bool _canComplete() {
+    return _controllers.every((controller) => controller.text.trim().isNotEmpty);
+  }
+
+  void _completeGratitude() {
+    if (_canComplete()) {
+      widget.onCompleted();
+      Navigator.of(context).pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請完成所有感恩練習')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('感恩練習 💕'),
+        backgroundColor: Colors.pink[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Container(
+        color: Colors.pink[50],
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '今天是 ${DateTime.now().month}/${DateTime.now().day}',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 10),
+              Text(
+                '寫下今天讓你感恩的三件事...',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 20),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: 3,
+                  itemBuilder: (context, index) {
+                    return Container(
+                      margin: EdgeInsets.only(bottom: 20),
+                      padding: EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 5,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${index + 1}. ${_prompts[index]}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.pink[700],
+                            ),
+                          ),
+                          SizedBox(height: 10),
+                          TextField(
+                            controller: _controllers[index],
+                            maxLines: 3,
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              hintText: '在這裡寫下你的感恩...',
+                              hintStyle: TextStyle(color: Colors.grey[400]),
+                            ),
+                            style: TextStyle(fontSize: 16, height: 1.5),
+                            onChanged: (text) {
+                              setState(() {});
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 20),
+              Center(
+                child: ElevatedButton(
+                  onPressed: _canComplete() ? _completeGratitude : null,
+                  child: Text('完成感恩練習', style: TextStyle(fontSize: 16)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _canComplete() ? Colors.pink[600] : Colors.grey[400],
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -513,6 +1432,16 @@ class _MoodRecordPageState extends State<MoodRecordPage> {
 
         var records = snapshot.data?.docs ?? [];
 
+        // 在客戶端排序，避免 Firestore 複合索引問題
+        records.sort((a, b) {
+          var aData = a.data() as Map<String, dynamic>;
+          var bData = b.data() as Map<String, dynamic>;
+          var aTime = aData['recordedAt'] as Timestamp?;
+          var bTime = bData['recordedAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+
         if (records.isEmpty) {
           return Center(child: Text('還沒有記錄'));
         }
@@ -594,7 +1523,7 @@ class _MoodRecordPageState extends State<MoodRecordPage> {
   }
 }
 
-// 舒緩心理頁面 - 整合壓力抒發遊戲
+// 舒緩心理頁面
 class RelaxationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -728,7 +1657,7 @@ class RelaxationPage extends StatelessWidget {
   }
 }
 
-// 1. 戳泡泡紙遊戲
+// 戳泡泡紙遊戲
 class PopItPage extends StatefulWidget {
   @override
   State<PopItPage> createState() => _PopItPageState();
@@ -760,7 +1689,6 @@ class _PopItPageState extends State<PopItPage> with TickerProviderStateMixin {
       poppedCount++;
     });
 
-    // 全部戳完的慶祝
     if (poppedCount == popped.length) {
       _celebrationController.forward();
       _showCelebrationDialog();
@@ -876,7 +1804,7 @@ class _PopItPageState extends State<PopItPage> with TickerProviderStateMixin {
   }
 }
 
-// 2. 呼吸冥想遊戲
+// 呼吸冥想遊戲
 class BreathingPage extends StatefulWidget {
   @override
   State<BreathingPage> createState() => _BreathingPageState();
@@ -891,10 +1819,6 @@ class _BreathingPageState extends State<BreathingPage> with TickerProviderStateM
   int seconds = 0;
   bool isActive = false;
   Timer? _timer;
-  int totalMinutes = 0;
-
-  final List<String> breathingModes = ['4-4-4 基礎', '4-7-8 深度', '6-6-6 平衡'];
-  int currentMode = 0;
 
   @override
   void initState() {
@@ -924,61 +1848,42 @@ class _BreathingPageState extends State<BreathingPage> with TickerProviderStateM
     _timer = Timer.periodic(Duration(seconds: 1), (timer) {
       setState(() {
         seconds++;
-        if (seconds % 60 == 0) totalMinutes++;
       });
     });
   }
 
   void _startBreathingCycle() {
-    int inhale, hold, exhale;
-    switch (currentMode) {
-      case 0: // 4-4-4
-        inhale = 4; hold = 4; exhale = 4;
-        break;
-      case 1: // 4-7-8
-        inhale = 4; hold = 7; exhale = 8;
-        break;
-      case 2: // 6-6-6
-        inhale = 6; hold = 6; exhale = 6;
-        break;
-      default:
-        inhale = 4; hold = 4; exhale = 4;
-    }
-    _breathCycle(inhale, hold, exhale);
+    _breathCycle();
   }
 
-  void _breathCycle(int inhale, int hold, int exhale) async {
+  void _breathCycle() async {
     if (!isActive) return;
 
-    // 吸氣
     setState(() {
       breathText = "吸氣";
       phaseText = "慢慢吸氣，感受空氣進入";
     });
     _breathController.forward(from: 0);
-    await Future.delayed(Duration(seconds: inhale));
+    await Future.delayed(Duration(seconds: 4));
 
     if (!isActive) return;
 
-    // 憋氣
     setState(() {
       breathText = "憋氣";
       phaseText = "保持呼吸，讓身體放鬆";
     });
-    await Future.delayed(Duration(seconds: hold));
+    await Future.delayed(Duration(seconds: 4));
 
     if (!isActive) return;
 
-    // 吐氣
     setState(() {
       breathText = "吐氣";
       phaseText = "慢慢吐氣，釋放壓力";
     });
     _breathController.reverse();
-    await Future.delayed(Duration(seconds: exhale));
+    await Future.delayed(Duration(seconds: 4));
 
-    // 重複循環
-    _breathCycle(inhale, hold, exhale);
+    _breathCycle();
   }
 
   void _stopBreathing() {
@@ -999,32 +1904,11 @@ class _BreathingPageState extends State<BreathingPage> with TickerProviderStateM
         title: Text('呼吸冥想'),
         backgroundColor: Colors.teal[400],
         foregroundColor: Colors.white,
-        actions: [
-          PopupMenuButton<int>(
-            onSelected: (value) {
-              setState(() {
-                currentMode = value;
-              });
-              if (isActive) {
-                _stopBreathing();
-                _startBreathing();
-              }
-            },
-            itemBuilder: (context) => breathingModes.asMap().entries.map((entry) {
-              return PopupMenuItem(value: entry.key, child: Text(entry.value));
-            }).toList(),
-          ),
-        ],
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              '${breathingModes[currentMode]} 呼吸法',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            SizedBox(height: 20),
             Text(
               '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
@@ -1109,7 +1993,7 @@ class _BreathingPageState extends State<BreathingPage> with TickerProviderStateM
   }
 }
 
-// 3. 情緒釋放頁面
+// 情緒釋放頁面
 class EmotionReleasePage extends StatefulWidget {
   @override
   State<EmotionReleasePage> createState() => _EmotionReleasePageState();
@@ -1284,7 +2168,7 @@ class _EmotionReleasePageState extends State<EmotionReleasePage> with TickerProv
   }
 }
 
-// 4. 療癒語錄頁面
+// 療癒語錄頁面
 class HealingQuotePage extends StatefulWidget {
   @override
   State<HealingQuotePage> createState() => _HealingQuotePageState();
@@ -1502,1116 +2386,6 @@ class EducationPage extends StatelessWidget {
         onTap: () {
           // 這裡可以實作具體的教育內容
         },
-      ),
-    );
-  }
-}
-
-// 角色培養頁面
-class CharacterPage extends StatefulWidget {
-  @override
-  _CharacterPageState createState() => _CharacterPageState();
-}
-
-class _CharacterPageState extends State<CharacterPage> {
-  @override
-  Widget build(BuildContext context) {
-    String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return Center(child: Text('請先登入'));
-
-    return Padding(
-      padding: EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            '我的夥伴',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue[800],
-            ),
-          ),
-          SizedBox(height: 30),
-          StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('pets')
-                .doc(userId)
-                .snapshots(),
-            builder: (context, snapshot) {
-              Map<String, dynamic> petData = {};
-
-              if (snapshot.hasData && snapshot.data!.exists) {
-                petData = snapshot.data!.data() as Map<String, dynamic>;
-              } else {
-                // 預設寵物狀態
-                petData = {
-                  'name': '小花',
-                  'level': 1,
-                  'experience': 0,
-                  'happiness': 50,
-                };
-              }
-
-              return Column(
-                children: [
-                  CircleAvatar(
-                    radius: 80,
-                    backgroundColor: Colors.pink[100],
-                    child: Icon(
-                      Icons.pets,
-                      size: 80,
-                      color: Colors.pink[400],
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                  Text(
-                    petData['name'] ?? '小花',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    'Level ${petData['level'] ?? 1}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                  LinearProgressIndicator(
-                    value: (petData['experience'] ?? 0) / 100.0,
-                    backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.pink[400]!),
-                  ),
-                  SizedBox(height: 10),
-                  Text('經驗值: ${petData['experience'] ?? 0}/100'),
-                  SizedBox(height: 20),
-                  Text('快樂值: ${petData['happiness'] ?? 50}/100'),
-                  SizedBox(height: 10),
-                  LinearProgressIndicator(
-                    value: (petData['happiness'] ?? 50) / 100.0,
-                    backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[400]!),
-                  ),
-                  SizedBox(height: 30),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildActionButton('餵食', Icons.restaurant, Colors.orange, () {
-                        _performPetAction('feed', petData);
-                      }),
-                      _buildActionButton('玩耍', Icons.sports_esports, Colors.green, () {
-                        _performPetAction('play', petData);
-                      }),
-                      _buildActionButton('清潔', Icons.cleaning_services, Colors.blue, () {
-                        _performPetAction('clean', petData);
-                      }),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(String label, IconData icon, MaterialColor color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 25,
-            backgroundColor: color[400],
-            child: Icon(icon, color: Colors.white),
-          ),
-          SizedBox(height: 5),
-          Text(label),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _performPetAction(String action, Map<String, dynamic> currentData) async {
-    String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-
-    int newExperience = (currentData['experience'] ?? 0) + 10;
-    int newHappiness = (currentData['happiness'] ?? 50) + 5;
-    int newLevel = currentData['level'] ?? 1;
-
-    // 升級邏輯
-    if (newExperience >= 100) {
-      newLevel += 1;
-      newExperience = 0;
-    }
-
-    // 快樂值上限
-    if (newHappiness > 100) {
-      newHappiness = 100;
-    }
-
-    Map<String, dynamic> updateData = {
-      'name': currentData['name'] ?? '小花',
-      'level': newLevel,
-      'experience': newExperience,
-      'happiness': newHappiness,
-    };
-
-    // 記錄最後操作時間
-    switch (action) {
-      case 'feed':
-        updateData['lastFed'] = FieldValue.serverTimestamp();
-        break;
-      case 'play':
-        updateData['lastPlayed'] = FieldValue.serverTimestamp();
-        break;
-      case 'clean':
-        updateData['lastCleaned'] = FieldValue.serverTimestamp();
-        break;
-    }
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('pets')
-          .doc(userId)
-          .set(updateData, SetOptions(merge: true));
-
-      String actionText = action == 'feed' ? '餵食' : action == 'play' ? '玩耍' : '清潔';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$actionText 完成！獲得經驗值 +10, 快樂值 +5')),
-      );
-
-      if (newLevel > (currentData['level'] ?? 1)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('恭喜！寵物升級到 Level $newLevel！')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('操作失敗: $e')),
-      );
-    }
-  }
-}
-
-// ==================== 澆水任務整合開始 ====================
-
-// 澆水任務主頁面
-class WateringGamePage extends StatefulWidget {
-  @override
-  State<WateringGamePage> createState() => _WateringGamePageState();
-}
-
-class _WateringGamePageState extends State<WateringGamePage> with TickerProviderStateMixin {
-  late AnimationController _treeAnimationController;
-  late Animation<double> _treeScaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _treeAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
-    _treeScaleAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
-      CurvedAnimation(
-        parent: _treeAnimationController,
-        curve: Curves.elasticOut,
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _treeAnimationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _completeTask(String taskName) async {
-    String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-
-    String today = DateTime.now().toIso8601String().split('T')[0];
-    String docId = '${userId}_${today}_${taskName.replaceAll(' ', '_')}';
-
-    await FirebaseFirestore.instance.collection('watering_tasks').doc(docId).set({
-      'userId': userId,
-      'taskName': taskName,
-      'isCompleted': true,
-      'date': today,
-      'completedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    // 播放樹長大動畫
-    _treeAnimationController.forward().then((_) {
-      _treeAnimationController.reverse();
-    });
-
-    // 顯示完成提示
-    _showTaskCompletedDialog(taskName);
-  }
-
-  void _showTaskCompletedDialog(String taskName) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('🎉 任務完成！'),
-          content: Text('你完成了「$taskName」任務！\n樹獲得了一次澆水 💧'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('繼續'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  String _getTreeStage(int waterCount) {
-    if (waterCount == 0) return '🌰 種子';
-    if (waterCount < 5) return '🌱 幼苗';
-    if (waterCount < 10) return '🌿 小樹';
-    if (waterCount < 15) return '🌳 中樹';
-    if (waterCount < 20) return '🌲 快成熟';
-    return '🎄 成熟的大樹！';
-  }
-
-  Color _getBackgroundColor(int waterCount) {
-    double progress = waterCount / 20.0;
-    return Color.lerp(Colors.brown.shade50, Colors.green.shade50, progress)!;
-  }
-
-  Future<void> _resetGame() async {
-    String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-
-    String today = DateTime.now().toIso8601String().split('T')[0];
-
-    // 刪除今日所有任務記錄
-    var batch = FirebaseFirestore.instance.batch();
-    var taskDocs = await FirebaseFirestore.instance
-        .collection('watering_tasks')
-        .where('userId', isEqualTo: userId)
-        .where('date', isEqualTo: today)
-        .get();
-
-    for (var doc in taskDocs.docs) {
-      batch.delete(doc.reference);
-    }
-
-    await batch.commit();
-  }
-
-  void _openTaskDetail(String taskName) {
-    Widget taskWidget;
-
-    switch (taskName) {
-      case '喝水 💧':
-        taskWidget = DrinkingTask(onCompleted: () => _completeTask(taskName));
-        break;
-      case '運動 🏃‍♂️':
-        taskWidget = ExerciseTask(onCompleted: () => _completeTask(taskName));
-        break;
-      case '冥想 🧘':
-        taskWidget = MeditationTask(onCompleted: () => _completeTask(taskName));
-        break;
-      case '寫心情日記 📖':
-        taskWidget = DiaryTask(onCompleted: () => _completeTask(taskName));
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).push(MaterialPageRoute(builder: (context) => taskWidget));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return Center(child: Text('請先登入'));
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('watering_tasks')
-          .where('userId', isEqualTo: userId)
-          .where('date', isEqualTo: DateTime.now().toIso8601String().split('T')[0])
-          .snapshots(),
-      builder: (context, snapshot) {
-        Map<String, bool> completions = {};
-        if (snapshot.hasData) {
-          for (var doc in snapshot.data!.docs) {
-            var data = doc.data() as Map<String, dynamic>;
-            completions[data['taskName']] = data['isCompleted'] ?? false;
-          }
-        }
-
-        int waterCount = completions.values.where((completed) => completed).length;
-        const int totalWater = 4; // 4個任務
-
-        final List<Map<String, dynamic>> tasks = [
-          {'name': '喝水 💧', 'subtitle': '8杯水目標'},
-          {'name': '運動 🏃‍♂️', 'subtitle': '5分鐘運動'},
-          {'name': '冥想 🧘', 'subtitle': '3分鐘冥想'},
-          {'name': '寫心情日記 📖', 'subtitle': '記錄今日感受'},
-        ];
-
-        return Scaffold(
-          backgroundColor: _getBackgroundColor(waterCount),
-          body: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                Text(
-                  '澆水養樹 🌱',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green[800],
-                  ),
-                ),
-                SizedBox(height: 20),
-
-                // 進度條
-                Container(
-                  width: double.infinity,
-                  height: 15,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.grey.shade300,
-                  ),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: waterCount / totalWater,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        gradient: LinearGradient(
-                          colors: [Colors.lightBlue, Colors.green.shade400],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 樹的狀態
-                AnimatedBuilder(
-                  animation: _treeScaleAnimation,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: _treeScaleAnimation.value,
-                      child: Text(
-                        _getTreeStage(waterCount),
-                        style: const TextStyle(
-                          fontSize: 64,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 15),
-
-                Text(
-                  '目前已澆水：$waterCount / $totalWater 次',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.green.shade700,
-                  ),
-                ),
-
-                const SizedBox(height: 25),
-
-                const Text(
-                  '📋 完成每日任務來澆水：',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-
-                const SizedBox(height: 15),
-
-                // 任務列表
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: tasks.length,
-                    itemBuilder: (context, index) {
-                      var task = tasks[index];
-                      bool isCompleted = completions[task['name']] ?? false;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 8,
-                          ),
-                          title: Text(
-                            task['name'],
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                              decoration: isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                              color: isCompleted ? Colors.grey : Colors.black87,
-                            ),
-                          ),
-                          subtitle: Text(task['subtitle']),
-                          trailing: isCompleted
-                              ? Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade100,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.check,
-                              color: Colors.green.shade700,
-                              size: 20,
-                            ),
-                          )
-                              : ElevatedButton(
-                            onPressed: () => _openTaskDetail(task['name']),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green.shade600,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                            ),
-                            child: const Text('開始'),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                // 完成提示
-                if (waterCount >= totalWater) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.yellow.shade100, Colors.orange.shade100],
-                      ),
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.orange, width: 2),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          '🎊 恭喜完成！ 🎊',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text('你成功讓樹長大了！', style: TextStyle(fontSize: 18)),
-                        const SizedBox(height: 15),
-                        ElevatedButton(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (BuildContext context) {
-                                return AlertDialog(
-                                  title: const Text('重置遊戲'),
-                                  content: const Text('確定要重新開始嗎？這會清除所有進度。'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.of(context).pop(),
-                                      child: const Text('取消'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.of(context).pop();
-                                        _resetGame();
-                                      },
-                                      child: const Text('確定'),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade600,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 30,
-                              vertical: 12,
-                            ),
-                          ),
-                          child: const Text('重新開始'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// 任務狀態類別
-class TaskStatus {
-  bool isCompleted;
-
-  TaskStatus({this.isCompleted = false});
-}
-
-// 喝水任務
-class DrinkingTask extends StatefulWidget {
-  final VoidCallback onCompleted;
-
-  const DrinkingTask({super.key, required this.onCompleted});
-
-  @override
-  State<DrinkingTask> createState() => _DrinkingTaskState();
-}
-
-class _DrinkingTaskState extends State<DrinkingTask> {
-  int glasses = 0;
-  final int targetGlasses = 8;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('喝水任務 💧'),
-        backgroundColor: Colors.blue.shade600,
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        color: Colors.blue.shade50,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  '今日喝水目標',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  '$glasses / $targetGlasses 杯',
-                  style: const TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 30),
-                LinearProgressIndicator(
-                  value: glasses / targetGlasses,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey[300],
-                  color: Colors.blue,
-                ),
-                const SizedBox(height: 40),
-                ElevatedButton(
-                  onPressed: glasses < targetGlasses
-                      ? () {
-                    setState(() {
-                      glasses++;
-                      if (glasses >= targetGlasses) {
-                        Future.delayed(
-                          const Duration(milliseconds: 500),
-                              () {
-                            widget.onCompleted();
-                            Navigator.of(context).pop();
-                          },
-                        );
-                      }
-                    });
-                  }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade600,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 15,
-                    ),
-                  ),
-                  child: const Text('喝一杯水 🥤', style: TextStyle(fontSize: 18)),
-                ),
-                const SizedBox(height: 20),
-                if (glasses >= targetGlasses)
-                  const Text(
-                    '🎉 太棒了！你完成了今日喝水目標！',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// 運動任務
-class ExerciseTask extends StatefulWidget {
-  final VoidCallback onCompleted;
-
-  const ExerciseTask({super.key, required this.onCompleted});
-
-  @override
-  State<ExerciseTask> createState() => _ExerciseTaskState();
-}
-
-class _ExerciseTaskState extends State<ExerciseTask> {
-  int seconds = 0;
-  final int targetSeconds = 300; // 5分鐘
-  bool isRunning = false;
-  Timer? timer;
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
-  }
-
-  void _toggleTimer() {
-    if (isRunning) {
-      timer?.cancel();
-    } else {
-      timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        setState(() {
-          seconds++;
-          if (seconds >= targetSeconds) {
-            timer.cancel();
-            isRunning = false;
-            widget.onCompleted();
-            Navigator.of(context).pop();
-          }
-        });
-      });
-    }
-    setState(() {
-      isRunning = !isRunning;
-    });
-  }
-
-  String _formatTime(int seconds) {
-    int minutes = seconds ~/ 60;
-    int remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('運動任務 🏃‍♂️'),
-        backgroundColor: Colors.orange.shade600,
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        color: Colors.orange.shade50,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  '運動計時器',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  _formatTime(seconds),
-                  style: const TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '目標：${_formatTime(targetSeconds)}',
-                  style: const TextStyle(fontSize: 18),
-                ),
-                const SizedBox(height: 30),
-                LinearProgressIndicator(
-                  value: seconds / targetSeconds,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey[300],
-                  color: Colors.orange,
-                ),
-                const SizedBox(height: 40),
-                ElevatedButton(
-                  onPressed: seconds < targetSeconds ? _toggleTimer : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange.shade600,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 15,
-                    ),
-                  ),
-                  child: Text(
-                    isRunning ? '暫停 ⏸️' : '開始運動 ▶️',
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                if (seconds >= targetSeconds)
-                  const Text(
-                    '🎉 太棒了！你完成了運動目標！',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// 冥想任務
-class MeditationTask extends StatefulWidget {
-  final VoidCallback onCompleted;
-
-  const MeditationTask({super.key, required this.onCompleted});
-
-  @override
-  State<MeditationTask> createState() => _MeditationTaskState();
-}
-
-class _MeditationTaskState extends State<MeditationTask>
-    with TickerProviderStateMixin {
-  int seconds = 0;
-  final int targetSeconds = 180; // 3分鐘
-  bool isRunning = false;
-  Timer? timer;
-  late AnimationController _breatheController;
-  late Animation<double> _breatheAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _breatheController = AnimationController(
-      duration: const Duration(seconds: 4),
-      vsync: this,
-    );
-    _breatheAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(parent: _breatheController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    _breatheController.dispose();
-    super.dispose();
-  }
-
-  void _toggleMeditation() {
-    if (isRunning) {
-      timer?.cancel();
-      _breatheController.stop();
-    } else {
-      _breatheController.repeat(reverse: true);
-      timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        setState(() {
-          seconds++;
-          if (seconds >= targetSeconds) {
-            timer.cancel();
-            _breatheController.stop();
-            isRunning = false;
-            widget.onCompleted();
-            Navigator.of(context).pop();
-          }
-        });
-      });
-    }
-    setState(() {
-      isRunning = !isRunning;
-    });
-  }
-
-  String _formatTime(int seconds) {
-    int minutes = seconds ~/ 60;
-    int remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('冥想任務 🧘'),
-        backgroundColor: Colors.purple.shade600,
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        color: Colors.purple.shade50,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  '冥想計時器',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 40),
-                AnimatedBuilder(
-                  animation: _breatheAnimation,
-                  builder: (context, child) {
-                    return Transform.scale(
-                      scale: _breatheAnimation.value,
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            colors: [
-                              Colors.purple.shade200,
-                              Colors.purple.shade400,
-                            ],
-                          ),
-                        ),
-                        child: const Center(
-                          child: Text('🧘', style: TextStyle(fontSize: 40)),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 40),
-                Text(
-                  _formatTime(seconds),
-                  style: const TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '目標：${_formatTime(targetSeconds)}',
-                  style: const TextStyle(fontSize: 18),
-                ),
-                const SizedBox(height: 30),
-                LinearProgressIndicator(
-                  value: seconds / targetSeconds,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey[300],
-                  color: Colors.purple,
-                ),
-                const SizedBox(height: 40),
-                ElevatedButton(
-                  onPressed: seconds < targetSeconds ? _toggleMeditation : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.purple.shade600,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 15,
-                    ),
-                  ),
-                  child: Text(
-                    isRunning ? '停止冥想 ⏸️' : '開始冥想 ▶️',
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                ),
-                if (isRunning) ...[
-                  const SizedBox(height: 20),
-                  const Text(
-                    '深呼吸，跟著圓圈的節奏...',
-                    style: TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                if (seconds >= targetSeconds)
-                  const Text(
-                    '🎉 太棒了！你完成了冥想！',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// 寫日記任務
-class DiaryTask extends StatefulWidget {
-  final VoidCallback onCompleted;
-
-  const DiaryTask({super.key, required this.onCompleted});
-
-  @override
-  State<DiaryTask> createState() => _DiaryTaskState();
-}
-
-class _DiaryTaskState extends State<DiaryTask> {
-  final TextEditingController _diaryController = TextEditingController();
-  final int minWords = 50;
-
-  @override
-  void dispose() {
-    _diaryController.dispose();
-    super.dispose();
-  }
-
-  int _getWordCount() {
-    return _diaryController.text
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .length;
-  }
-
-  void _completeDiary() {
-    if (_getWordCount() >= minWords) {
-      widget.onCompleted();
-      Navigator.of(context).pop();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('心情日記 📖'),
-        backgroundColor: Colors.indigo.shade600,
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        color: Colors.indigo.shade50,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '今天是 ${DateTime.now().month}/${DateTime.now().day}',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                '寫下你今天的心情和想法...',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _diaryController,
-                    maxLines: null,
-                    expands: true,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText:
-                      '開始寫下你的心情...\n\n你今天過得怎麼樣？\n有什麼特別的事情發生嗎？\n你現在的感受是什麼？',
-                      hintStyle: TextStyle(color: Colors.grey),
-                    ),
-                    style: const TextStyle(fontSize: 16, height: 1.5),
-                    onChanged: (text) {
-                      setState(() {});
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '字數：${_getWordCount()} / $minWords',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: _getWordCount() >= minWords
-                          ? Colors.green
-                          : Colors.grey,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: _getWordCount() >= minWords
-                        ? _completeDiary
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.indigo.shade600,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 30,
-                        vertical: 12,
-                      ),
-                    ),
-                    child: const Text('完成日記', style: TextStyle(fontSize: 16)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
