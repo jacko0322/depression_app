@@ -23,7 +23,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.flutter_projects"
-        minSdk = 23
+        minSdk = 23  // 這個版本已經足夠支援 Google Sign-In
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -37,15 +37,23 @@ android {
 }
 
 dependencies {
-    // Import the Firebase BoM
+    // Import the Firebase BoM (使用最新版本)
     implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
 
-    // TODO: Add the dependencies for Firebase products you want to use
-    // When using the BoM, don't specify versions in Firebase dependencies
+    // 移除這個重複的依賴，因為它不是運行時依賴
+    // implementation("com.google.gms:google-services:4.4.3")
+
+    // Firebase Analytics (保持現有的)
     implementation("com.google.firebase:firebase-analytics")
 
-    // Add the dependencies for any other desired Firebase products
-    // https://firebase.google.com/docs/android/setup#available-libraries
+    // 新增：Firebase Auth - 用於 Google Sign-In
+    implementation("com.google.firebase:firebase-auth")
+
+    // 新增：Google Sign-In SDK (使用最新版本)
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+
+    // 新增：Firebase Firestore (如果還沒有的話)
+    implementation("com.google.firebase:firebase-firestore")
 }
 
 flutter {

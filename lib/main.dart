@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -83,7 +84,7 @@ class SplashScreen extends StatelessWidget {
   }
 }
 
-// 登入註冊頁面
+// 登入註冊頁面 - 添加Google登入功能
 class LoginPage extends StatefulWidget {
   @override
   _LoginPageState createState() => _LoginPageState();
@@ -92,6 +93,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
   bool _isLogin = true;
   bool _isLoading = false;
 
@@ -102,71 +104,112 @@ class _LoginPageState extends State<LoginPage> {
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.all(20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.psychology, size: 80, color: Colors.blue[400]),
-              SizedBox(height: 30),
-              Text(
-                _isLogin ? '歡迎回來' : '建立帳戶',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue[800],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(height: 50),
+                Icon(Icons.psychology, size: 80, color: Colors.blue[400]),
+                SizedBox(height: 30),
+                Text(
+                  _isLogin ? '歡迎回來' : '建立帳戶',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[800],
+                  ),
                 ),
-              ),
-              SizedBox(height: 40),
-              TextField(
-                controller: _emailController,
-                decoration: InputDecoration(
-                  labelText: '電子郵件',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  prefixIcon: Icon(Icons.email),
+                SizedBox(height: 40),
+                TextField(
+                  controller: _emailController,
+                  decoration: InputDecoration(
+                    labelText: '電子郵件',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    prefixIcon: Icon(Icons.email),
+                  ),
                 ),
-              ),
-              SizedBox(height: 20),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: '密碼',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  prefixIcon: Icon(Icons.lock),
+                SizedBox(height: 20),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: '密碼',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    prefixIcon: Icon(Icons.lock),
+                  ),
                 ),
-              ),
-              SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _handleAuth,
-                child: _isLoading
-                    ? CircularProgressIndicator(color: Colors.white)
-                    : Text(_isLogin ? '登入' : '註冊'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[400],
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                SizedBox(height: 30),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _handleEmailAuth,
+                  child: _isLoading
+                      ? CircularProgressIndicator(color: Colors.white)
+                      : Text(_isLogin ? '登入' : '註冊'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[400],
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    minimumSize: Size(double.infinity, 50),
+                  ),
                 ),
-              ),
-              SizedBox(height: 20),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _isLogin = !_isLogin;
-                  });
-                },
-                child: Text(
-                  _isLogin ? '還沒有帳戶？立即註冊' : '已有帳戶？立即登入',
-                  style: TextStyle(color: Colors.blue[600]),
+                SizedBox(height: 20),
+
+                // 分隔線
+                Row(
+                  children: [
+                    Expanded(child: Divider()),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('或', style: TextStyle(color: Colors.grey[600])),
+                    ),
+                    Expanded(child: Divider()),
+                  ],
                 ),
-              ),
-            ],
+                SizedBox(height: 20),
+
+                // Google登入按鈕
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _handleGoogleSignIn,
+                  icon: Image.asset(
+                    'assets/google_icon.png', // 需要添加Google圖標
+                    height: 24,
+                    width: 24,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(Icons.login, color: Colors.red);
+                    },
+                  ),
+                  label: Text('使用 Google 登入'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey[700],
+                    side: BorderSide(color: Colors.grey[300]!),
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    minimumSize: Size(double.infinity, 50),
+                  ),
+                ),
+                SizedBox(height: 20),
+
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _isLogin = !_isLogin;
+                    });
+                  },
+                  child: Text(
+                    _isLogin ? '還沒有帳戶？立即註冊' : '已有帳戶？立即登入',
+                    style: TextStyle(color: Colors.blue[600]),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Future<void> _handleAuth() async {
+  // 原有的email/password登入邏輯
+  Future<void> _handleEmailAuth() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       _showMessage('請填寫所有欄位');
       return;
@@ -193,10 +236,63 @@ class _LoginPageState extends State<LoginPage> {
           'email': _emailController.text.trim(),
           'role': '個人使用者',
           'createdAt': FieldValue.serverTimestamp(),
+          'signInMethod': 'email',
         });
       }
     } catch (e) {
       _showMessage(_getErrorMessage(e.toString()));
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  // Google登入邏輯
+  Future<void> _handleGoogleSignIn() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 觸發Google登入流程
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        // 用戶取消登入
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // 獲取認證詳細信息
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      // 創建新的認證憑據
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // 用憑據登入Firebase
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // 檢查是否為新用戶，如果是則創建用戶資料
+      if (userCredential.additionalUserInfo?.isNewUser == true) {
+        await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
+          'email': userCredential.user!.email,
+          'displayName': userCredential.user!.displayName,
+          'photoURL': userCredential.user!.photoURL,
+          'role': '個人使用者',
+          'createdAt': FieldValue.serverTimestamp(),
+          'signInMethod': 'google',
+        });
+      }
+
+      _showMessage('登入成功！');
+    } catch (e) {
+      _showMessage('Google登入失敗：${_getErrorMessage(e.toString())}');
     }
 
     setState(() {
@@ -216,6 +312,8 @@ class _LoginPageState extends State<LoginPage> {
     if (error.contains('email-already-in-use')) return '此電子郵件已被使用';
     if (error.contains('weak-password')) return '密碼強度不足';
     if (error.contains('invalid-email')) return '電子郵件格式錯誤';
+    if (error.contains('network-request-failed')) return '網絡連接失敗';
+    if (error.contains('too-many-requests')) return '請求過於頻繁，請稍後再試';
     return '發生錯誤，請稍後再試';
   }
 }
@@ -228,6 +326,7 @@ class MainHomePage extends StatefulWidget {
 
 class _MainHomePageState extends State<MainHomePage> {
   int _currentIndex = 0;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   final List<Widget> _pages = [
     IntegratedGrowthPage(), // 整合的成長頁面
@@ -235,6 +334,26 @@ class _MainHomePageState extends State<MainHomePage> {
     RelaxationPage(),
     EducationPage(),
   ];
+
+  // 登出功能（支援Google登出）
+  Future<void> _handleSignOut() async {
+    try {
+      // 先檢查當前用戶的登入方式
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // 如果有Google登入，先登出Google
+        if (await _googleSignIn.isSignedIn()) {
+          await _googleSignIn.signOut();
+        }
+        // 然後登出Firebase
+        await FirebaseAuth.instance.signOut();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('登出失敗：$e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -245,11 +364,34 @@ class _MainHomePageState extends State<MainHomePage> {
         backgroundColor: Colors.blue[400],
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
+          // 顯示用戶頭像（如果有的話）
+          if (FirebaseAuth.instance.currentUser?.photoURL != null)
+            Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: CircleAvatar(
+                backgroundImage: NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!),
+                radius: 16,
+              ),
+            ),
+          PopupMenuButton(
+            icon: Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'logout') {
+                _handleSignOut();
+              }
             },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, size: 20),
+                    SizedBox(width: 8),
+                    Text('登出'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -688,7 +830,6 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
     );
   }
 }
-
 // 喝水任務
 class DrinkingTask extends StatefulWidget {
   final VoidCallback onCompleted;
