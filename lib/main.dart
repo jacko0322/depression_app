@@ -225,6 +225,27 @@ class _LoginPageState extends State<LoginPage> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
+
+        // 為現有用戶更新 displayName（如果為空的話）
+        String userId = FirebaseAuth.instance.currentUser!.uid;
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        if (userDoc.exists) {
+          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>? ?? {};
+          if (userData['displayName'] == null || userData['displayName'] == '未知用戶' || userData['displayName'] == '') {
+            String displayName = _emailController.text.trim().split('@')[0];
+
+            await FirebaseFirestore.instance.collection('users').doc(userId).update({
+              'displayName': displayName,
+            });
+
+            // 同時更新 Firebase Auth 的 displayName
+            await FirebaseAuth.instance.currentUser!.updateDisplayName(displayName);
+          }
+        }
       } else {
         UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
@@ -232,12 +253,18 @@ class _LoginPageState extends State<LoginPage> {
         );
 
         // 建立用戶資料
+        String displayName = _emailController.text.trim().split('@')[0];
         await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
           'email': _emailController.text.trim(),
+          'displayName': displayName,
           'role': '個人使用者',
           'createdAt': FieldValue.serverTimestamp(),
           'signInMethod': 'email',
+          'isAnonymous': false,
         });
+
+        // 同時更新 Firebase Auth 的 displayName
+        await userCredential.user!.updateDisplayName(displayName);
       }
     } catch (e) {
       _showMessage(_getErrorMessage(e.toString()));
@@ -280,14 +307,39 @@ class _LoginPageState extends State<LoginPage> {
 
       // 檢查是否為新用戶，如果是則創建用戶資料
       if (userCredential.additionalUserInfo?.isNewUser == true) {
+        String displayName = userCredential.user!.displayName ??
+            userCredential.user!.email?.split('@')[0] ??
+            '用戶';
+
         await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
           'email': userCredential.user!.email,
-          'displayName': userCredential.user!.displayName,
+          'displayName': displayName,
           'photoURL': userCredential.user!.photoURL,
           'role': '個人使用者',
           'createdAt': FieldValue.serverTimestamp(),
           'signInMethod': 'google',
+          'isAnonymous': false,
         });
+      } else {
+        // 為現有用戶更新 displayName（如果為空的話）
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .get();
+
+        if (userDoc.exists) {
+          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+          if (userData['displayName'] == null || userData['displayName'] == '未知用戶') {
+            String displayName = userCredential.user!.displayName ??
+                userCredential.user!.email?.split('@')[0] ??
+                '用戶';
+
+            await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).update({
+              'displayName': displayName,
+              'photoURL': userCredential.user!.photoURL,
+            });
+          }
+        }
       }
 
       _showMessage('登入成功！');
@@ -318,7 +370,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// 主頁面
+// 主頁面 - 新增社群功能
 class MainHomePage extends StatefulWidget {
   @override
   _MainHomePageState createState() => _MainHomePageState();
@@ -329,8 +381,9 @@ class _MainHomePageState extends State<MainHomePage> {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   final List<Widget> _pages = [
-    IntegratedGrowthPage(), // 整合的成長頁面
+    IntegratedGrowthPage(),
     MoodRecordPage(),
+    CommunityPage(), // 新增社群頁面
     RelaxationPage(),
     EducationPage(),
   ];
@@ -338,14 +391,11 @@ class _MainHomePageState extends State<MainHomePage> {
   // 登出功能（支援Google登出）
   Future<void> _handleSignOut() async {
     try {
-      // 先檢查當前用戶的登入方式
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // 如果有Google登入，先登出Google
         if (await _googleSignIn.isSignedIn()) {
           await _googleSignIn.signOut();
         }
-        // 然後登出Firebase
         await FirebaseAuth.instance.signOut();
       }
     } catch (e) {
@@ -411,6 +461,7 @@ class _MainHomePageState extends State<MainHomePage> {
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.eco), label: '成長花園'),
           BottomNavigationBarItem(icon: Icon(Icons.mood), label: '心情記錄'),
+          BottomNavigationBarItem(icon: Icon(Icons.forum), label: '社群支持'), // 新增社群
           BottomNavigationBarItem(icon: Icon(Icons.spa), label: '舒緩心理'),
           BottomNavigationBarItem(icon: Icon(Icons.school), label: '資源教育'),
         ],
@@ -419,6 +470,1325 @@ class _MainHomePageState extends State<MainHomePage> {
   }
 }
 
+// 社群頁面 - 新增功能
+class CommunityPage extends StatefulWidget {
+  @override
+  _CommunityPageState createState() => _CommunityPageState();
+}
+
+class _CommunityPageState extends State<CommunityPage> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.forum, color: Colors.blue[600], size: 28),
+                    SizedBox(width: 8),
+                    Text(
+                      '社群支持',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[800],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '分享你的感受，獲得同伴的支持與鼓勵 💙',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TabBar(
+            controller: _tabController,
+            tabs: [
+              Tab(text: '心情廣場'),
+              Tab(text: '我的分享'),
+            ],
+            labelColor: Colors.blue[600],
+            unselectedLabelColor: Colors.grey[600],
+            indicatorColor: Colors.blue[600],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                CommunityFeedPage(),
+                MyPostsPage(),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => CreatePostPage()),
+          );
+        },
+        child: Icon(Icons.add),
+        backgroundColor: Colors.blue[600],
+      ),
+    );
+  }
+}
+
+// 社群動態頁面
+class CommunityFeedPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    // 確認用戶登入狀態
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.login, size: 64, color: Colors.grey[400]),
+            SizedBox(height: 16),
+            Text(
+              '請先登入以查看社群內容',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('community_posts')
+          .limit(50)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+                SizedBox(height: 16),
+                Text('載入錯誤', style: TextStyle(fontSize: 16)),
+                SizedBox(height: 8),
+                Text(
+                  '請檢查網路連接',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        var posts = snapshot.data?.docs ?? [];
+
+        // 在客戶端排序
+        posts.sort((a, b) {
+          var aData = a.data() as Map<String, dynamic>;
+          var bData = b.data() as Map<String, dynamic>;
+          var aTime = aData['createdAt'] as Timestamp?;
+          var bTime = bData['createdAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+
+        if (posts.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.forum_outlined, size: 64, color: Colors.grey[400]),
+                SizedBox(height: 16),
+                Text(
+                  '還沒有人分享心情',
+                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '成為第一個分享的人吧！',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: EdgeInsets.all(12),
+          itemCount: posts.length,
+          itemBuilder: (context, index) {
+            var post = posts[index].data() as Map<String, dynamic>;
+            return CommunityPostCard(
+              postId: posts[index].id,
+              postData: post,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// 個人貼文頁面
+class MyPostsPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return Center(child: Text('請先登入'));
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('community_posts')
+          .where('authorId', isEqualTo: userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+                SizedBox(height: 16),
+                Text('載入錯誤', style: TextStyle(fontSize: 16)),
+                SizedBox(height: 8),
+                Text(
+                  '請到 Firebase Console 創建複合索引',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    // 重新載入
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => MyPostsPage()),
+                    );
+                  },
+                  child: Text('重試'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        var posts = snapshot.data?.docs ?? [];
+
+        // 在客戶端排序
+        posts.sort((a, b) {
+          var aData = a.data() as Map<String, dynamic>;
+          var bData = b.data() as Map<String, dynamic>;
+          var aTime = aData['createdAt'] as Timestamp?;
+          var bTime = bData['createdAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+
+        if (posts.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.note_outlined, size: 64, color: Colors.grey[400]),
+                SizedBox(height: 16),
+                Text(
+                  '你還沒有分享過心情',
+                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '點擊右下角的按鈕開始分享',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: EdgeInsets.all(12),
+          itemCount: posts.length,
+          itemBuilder: (context, index) {
+            var post = posts[index].data() as Map<String, dynamic>;
+            return CommunityPostCard(
+              postId: posts[index].id,
+              postData: post,
+              isMyPost: true,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// 社群貼文卡片
+class CommunityPostCard extends StatefulWidget {
+  final String postId;
+  final Map<String, dynamic> postData;
+  final bool isMyPost;
+
+  const CommunityPostCard({
+    Key? key,
+    required this.postId,
+    required this.postData,
+    this.isMyPost = false,
+  }) : super(key: key);
+
+  @override
+  _CommunityPostCardState createState() => _CommunityPostCardState();
+}
+
+class _CommunityPostCardState extends State<CommunityPostCard> {
+  bool _isLiked = false;
+  int _likeCount = 0;
+  int _commentCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeLikeStatus();
+    _initializeCommentCount();
+  }
+
+  Future<void> _initializeCommentCount() async {
+    try {
+      QuerySnapshot commentQuery = await FirebaseFirestore.instance
+          .collection('community_posts')
+          .doc(widget.postId)
+          .collection('comments')
+          .get();
+
+      setState(() {
+        _commentCount = commentQuery.docs.length;
+      });
+    } catch (e) {
+      print('初始化評論計數錯誤: $e');
+    }
+  }
+
+  Future<void> _initializeLikeStatus() async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      // 檢查是否已點讚
+      QuerySnapshot likeQuery = await FirebaseFirestore.instance
+          .collection('community_posts')
+          .doc(widget.postId)
+          .collection('likes')
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      // 獲取點讚總數
+      QuerySnapshot allLikesQuery = await FirebaseFirestore.instance
+          .collection('community_posts')
+          .doc(widget.postId)
+          .collection('likes')
+          .get();
+
+      setState(() {
+        _isLiked = likeQuery.docs.isNotEmpty;
+        _likeCount = allLikesQuery.docs.length;
+      });
+    } catch (e) {
+      print('初始化點讚狀態錯誤: $e');
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請先登入才能點讚')),
+      );
+      return;
+    }
+
+    try {
+      if (_isLiked) {
+        // 取消點讚 - 查找並刪除對應的點讚記錄
+        QuerySnapshot likeQuery = await FirebaseFirestore.instance
+            .collection('community_posts')
+            .doc(widget.postId)
+            .collection('likes')
+            .where('userId', isEqualTo: userId)
+            .get();
+
+        for (QueryDocumentSnapshot doc in likeQuery.docs) {
+          await doc.reference.delete();
+        }
+
+        print('取消點讚成功');
+
+        setState(() {
+          _isLiked = false;
+          _likeCount--;
+        });
+      } else {
+        // 新增點讚
+        DocumentReference likeRef = await FirebaseFirestore.instance
+            .collection('community_posts')
+            .doc(widget.postId)
+            .collection('likes')
+            .add({
+          'userId': userId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        print('點讚成功，ID: ${likeRef.id}');
+
+        setState(() {
+          _isLiked = true;
+          _likeCount++;
+        });
+      }
+    } catch (e) {
+      print('點讚操作錯誤: $e');
+      String errorMessage = '點讚失敗';
+      if (e.toString().contains('permission-denied')) {
+        errorMessage = '權限不足，請檢查 Firebase 設定';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$errorMessage，請稍後再試')),
+      );
+    }
+  }
+
+  void _openComments() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PostCommentsPage(postId: widget.postId),
+      ),
+    ).then((_) {
+      // 當評論頁面關閉後，重新載入評論計數
+      _initializeCommentCount();
+    });
+  }
+
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '剛剛';
+
+    DateTime dateTime = timestamp.toDate();
+    DateTime now = DateTime.now();
+    Duration difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}分鐘前';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}小時前';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}天前';
+    } else {
+      return '${dateTime.month}/${dateTime.day}';
+    }
+  }
+
+  String _getMoodEmoji(String mood) {
+    switch (mood) {
+      case 'happy': return '😊';
+      case 'sad': return '😢';
+      case 'anxious': return '😰';
+      case 'calm': return '😌';
+      case 'excited': return '🤩';
+      case 'tired': return '😴';
+      case 'grateful': return '🙏';
+      case 'confused': return '🤔';
+      default: return '💭';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    bool isAnonymous = widget.postData['isAnonymous'] ?? false;
+    String authorName = isAnonymous ? '匿名用戶' : (widget.postData['authorName'] ?? '用戶');
+
+    // 如果顯示名稱為 '未知用戶'，嘗試從 email 中提取用戶名
+    if (authorName == '未知用戶' && widget.postData['authorEmail'] != null) {
+      authorName = widget.postData['authorEmail'].split('@')[0];
+    }
+
+    String mood = widget.postData['mood'] ?? 'normal';
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 用戶信息行
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.blue[100],
+                  child: isAnonymous
+                      ? Icon(Icons.person, color: Colors.blue[600])
+                      : (widget.postData['authorPhotoURL'] != null
+                      ? null
+                      : Icon(Icons.person, color: Colors.blue[600])),
+                  backgroundImage: (!isAnonymous && widget.postData['authorPhotoURL'] != null)
+                      ? NetworkImage(widget.postData['authorPhotoURL'])
+                      : null,
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            authorName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            _getMoodEmoji(mood),
+                            style: TextStyle(fontSize: 16),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        _formatTimestamp(widget.postData['createdAt']),
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.isMyPost)
+                  PopupMenuButton(
+                    icon: Icon(Icons.more_horiz),
+                    onSelected: (value) {
+                      if (value == 'delete') {
+                        _showDeleteConfirmation();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, size: 18, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('刪除'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            SizedBox(height: 12),
+
+            // 貼文內容
+            Text(
+              widget.postData['content'] ?? '',
+              style: TextStyle(
+                fontSize: 16,
+                height: 1.5,
+              ),
+            ),
+
+            SizedBox(height: 16),
+
+            // 互動按鈕
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: _toggleLike,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isLiked ? Icons.favorite : Icons.favorite_border,
+                        color: _isLiked ? Colors.red : Colors.grey[600],
+                        size: 20,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        _likeCount.toString(),
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 24),
+                GestureDetector(
+                  onTap: _openComments,
+                  child: Row(
+                    children: [
+                      Icon(Icons.comment_outlined, color: Colors.grey[600], size: 20),
+                      SizedBox(width: 4),
+                      Text(
+                        _commentCount.toString(),
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Spacer(),
+                if (!widget.isMyPost)
+                  GestureDetector(
+                    onTap: _showReportDialog,
+                    child: Icon(Icons.report_outlined, color: Colors.grey[600], size: 20),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('刪除貼文'),
+        content: Text('確定要刪除這則貼文嗎？此操作無法復原。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deletePost();
+            },
+            child: Text('刪除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deletePost() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('community_posts')
+          .doc(widget.postId)
+          .delete();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('貼文已刪除')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('刪除失敗：$e')),
+      );
+    }
+  }
+
+  void _showReportDialog() {
+    final List<String> reportReasons = [
+      '不當內容',
+      '騷擾或霸凌',
+      '垃圾訊息',
+      '虛假資訊',
+      '其他'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('檢舉貼文'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('請選擇檢舉原因：'),
+            SizedBox(height: 12),
+            ...reportReasons.map((reason) =>
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(reason, style: TextStyle(fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _reportPost(reason);
+                  },
+                ),
+            ).toList(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _reportPost(String reason) async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請先登入才能檢舉')),
+      );
+      return;
+    }
+
+    try {
+      DocumentReference reportRef = await FirebaseFirestore.instance.collection('reports').add({
+        'postId': widget.postId,
+        'reportedBy': userId,
+        'reportedAt': FieldValue.serverTimestamp(),
+        'type': 'post',
+        'reason': reason,
+      });
+
+      print('檢舉成功，ID: ${reportRef.id}');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('檢舉已提交，謝謝您的反饋')),
+      );
+    } catch (e) {
+      print('檢舉失敗: $e');
+      String errorMessage = '檢舉失敗';
+      if (e.toString().contains('permission-denied')) {
+        errorMessage = '權限不足，請檢查 Firebase 設定';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$errorMessage，請稍後再試')),
+      );
+    }
+  }
+}
+
+// 發布貼文頁面
+class CreatePostPage extends StatefulWidget {
+  @override
+  _CreatePostPageState createState() => _CreatePostPageState();
+}
+
+class _CreatePostPageState extends State<CreatePostPage> {
+  final TextEditingController _contentController = TextEditingController();
+  bool _isAnonymous = false;
+  String _selectedMood = 'normal';
+  bool _isLoading = false;
+
+  final List<Map<String, dynamic>> _moods = [
+    {'key': 'happy', 'emoji': '😊', 'label': '開心'},
+    {'key': 'sad', 'emoji': '😢', 'label': '難過'},
+    {'key': 'anxious', 'emoji': '😰', 'label': '焦慮'},
+    {'key': 'calm', 'emoji': '😌', 'label': '平靜'},
+    {'key': 'excited', 'emoji': '🤩', 'label': '興奮'},
+    {'key': 'tired', 'emoji': '😴', 'label': '疲憊'},
+    {'key': 'grateful', 'emoji': '🙏', 'label': '感恩'},
+    {'key': 'confused', 'emoji': '🤔', 'label': '困惑'},
+  ];
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _publishPost() async {
+    if (_contentController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請寫下你的想法')),
+      );
+      return;
+    }
+
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請先登入才能發佈貼文')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 獲取用戶資料
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>? ?? {};
+
+      // 獲取用戶名稱，優先順序：Firestore displayName > Firebase Auth displayName > email前綴
+      String userName = userData['displayName'] ??
+          FirebaseAuth.instance.currentUser?.displayName ??
+          FirebaseAuth.instance.currentUser?.email?.split('@')[0] ??
+          '用戶';
+
+      // 發布貼文 - 確保 authorId 正確設置
+      DocumentReference postRef = await FirebaseFirestore.instance.collection('community_posts').add({
+        'content': _contentController.text.trim(),
+        'authorId': userId,
+        'authorName': _isAnonymous ? '匿名用戶' : userName,
+        'authorEmail': _isAnonymous ? null : FirebaseAuth.instance.currentUser?.email,
+        'authorPhotoURL': _isAnonymous ? null : (userData['photoURL'] ?? FirebaseAuth.instance.currentUser?.photoURL),
+        'mood': _selectedMood,
+        'isAnonymous': _isAnonymous,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // 確保文檔創建成功
+      print('貼文創建成功，ID: ${postRef.id}');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('分享成功！')),
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      String errorMessage = '分享失敗';
+      if (e.toString().contains('permission-denied')) {
+        errorMessage = '權限不足，請檢查 Firebase 設定';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$errorMessage：$e')),
+      );
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('分享心情'),
+        backgroundColor: Colors.blue[600],
+        foregroundColor: Colors.white,
+        actions: [
+          TextButton(
+            onPressed: _isLoading ? null : _publishPost,
+            child: _isLoading
+                ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+                : Text('發布', style: TextStyle(color: Colors.white, fontSize: 16)),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 心情選擇
+            Text(
+              '現在的心情：',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 12),
+            Container(
+              height: 50,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _moods.length,
+                itemBuilder: (context, index) {
+                  var mood = _moods[index];
+                  bool isSelected = _selectedMood == mood['key'];
+
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedMood = mood['key'];
+                      });
+                    },
+                    child: Container(
+                      margin: EdgeInsets.only(right: 8),
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.blue[100] : Colors.grey[100],
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected ? Colors.blue[400]! : Colors.grey[300]!,
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(mood['emoji'], style: TextStyle(fontSize: 16)),
+                          SizedBox(width: 4),
+                          Text(
+                            mood['label'],
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isSelected ? Colors.blue[600] : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            SizedBox(height: 20),
+
+            // 內容輸入
+            Text(
+              '想說什麼？',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 12),
+            Container(
+              height: MediaQuery.of(context).size.height * 0.4,
+              child: TextField(
+                controller: _contentController,
+                maxLines: null,
+                expands: true,
+                decoration: InputDecoration(
+                  hintText: '分享你的感受、想法或今天發生的事...\n\n這裡是一個安全的空間，你可以自由表達自己的情感。',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: EdgeInsets.all(16),
+                ),
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+            ),
+
+            SizedBox(height: 16),
+
+            // 匿名選項
+            Row(
+              children: [
+                Checkbox(
+                  value: _isAnonymous,
+                  onChanged: (value) {
+                    setState(() {
+                      _isAnonymous = value ?? false;
+                    });
+                  },
+                ),
+                Text('匿名分享'),
+                Spacer(),
+                Text(
+                  '${_contentController.text.length}/1000',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 8),
+
+            // 提示文字
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue[600], size: 16),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '記住：這裡是一個相互支持的社群，請保持善意和尊重。',
+                      style: TextStyle(fontSize: 12, color: Colors.blue[600]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// 貼文評論頁面
+class PostCommentsPage extends StatefulWidget {
+  final String postId;
+
+  const PostCommentsPage({Key? key, required this.postId}) : super(key: key);
+
+  @override
+  _PostCommentsPageState createState() => _PostCommentsPageState();
+}
+
+class _PostCommentsPageState extends State<PostCommentsPage> {
+  final TextEditingController _commentController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _addComment() async {
+    if (_commentController.text.trim().isEmpty) return;
+
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請先登入才能評論')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 獲取用戶資料
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>? ?? {};
+
+      // 獲取用戶名稱
+      String userName = userData['displayName'] ??
+          FirebaseAuth.instance.currentUser?.displayName ??
+          FirebaseAuth.instance.currentUser?.email?.split('@')[0] ??
+          '用戶';
+
+      print('準備添加評論，用戶: $userName');
+
+      // 添加評論
+      DocumentReference commentRef = await FirebaseFirestore.instance
+          .collection('community_posts')
+          .doc(widget.postId)
+          .collection('comments')
+          .add({
+        'content': _commentController.text.trim(),
+        'authorId': userId,
+        'authorName': userName,
+        'authorEmail': FirebaseAuth.instance.currentUser?.email,
+        'authorPhotoURL': userData['photoURL'] ?? FirebaseAuth.instance.currentUser?.photoURL,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      print('評論添加成功，ID: ${commentRef.id}');
+
+      _commentController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('回覆已發送')),
+      );
+    } catch (e) {
+      print('評論失敗: $e');
+      String errorMessage = '回覆失敗';
+      if (e.toString().contains('permission-denied')) {
+        errorMessage = '權限不足，請檢查 Firebase 設定';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$errorMessage，請稍後再試')),
+      );
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('回覆'),
+        backgroundColor: Colors.blue[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Column(
+        children: [
+          // 評論列表
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('community_posts')
+                  .doc(widget.postId)
+                  .collection('comments')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+                        SizedBox(height: 16),
+                        Text('載入錯誤', style: TextStyle(fontSize: 16)),
+                        SizedBox(height: 8),
+                        Text('請檢查網路連接', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                      ],
+                    ),
+                  );
+                }
+
+                var comments = snapshot.data?.docs ?? [];
+
+                // 在客戶端排序（按時間正序）
+                comments.sort((a, b) {
+                  var aData = a.data() as Map<String, dynamic>;
+                  var bData = b.data() as Map<String, dynamic>;
+                  var aTime = aData['createdAt'] as Timestamp?;
+                  var bTime = bData['createdAt'] as Timestamp?;
+                  if (aTime == null || bTime == null) return 0;
+                  return aTime.compareTo(bTime);
+                });
+
+                if (comments.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.comment_outlined, size: 48, color: Colors.grey[400]),
+                        SizedBox(height: 16),
+                        Text(
+                          '還沒有人回覆',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '成為第一個回覆的人',
+                          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: EdgeInsets.all(16),
+                  itemCount: comments.length,
+                  itemBuilder: (context, index) {
+                    var comment = comments[index].data() as Map<String, dynamic>;
+                    return CommentCard(comment: comment);
+                  },
+                );
+              },
+            ),
+          ),
+
+          // 評論輸入框
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _commentController,
+                    decoration: InputDecoration(
+                      hintText: '寫下你的回覆...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    maxLines: null,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _addComment(),
+                  ),
+                ),
+                SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _isLoading ? null : _addComment,
+                  child: Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[600],
+                      shape: BoxShape.circle,
+                    ),
+                    child: _isLoading
+                        ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                        : Icon(Icons.send, color: Colors.white, size: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 評論卡片
+class CommentCard extends StatelessWidget {
+  final Map<String, dynamic> comment;
+
+  const CommentCard({Key? key, required this.comment}) : super(key: key);
+
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '剛剛';
+
+    DateTime dateTime = timestamp.toDate();
+    DateTime now = DateTime.now();
+    Duration difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}分鐘前';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}小時前';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}天前';
+    } else {
+      return '${dateTime.month}/${dateTime.day}';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String authorName = comment['authorName'] ?? '用戶';
+
+    // 如果顯示名稱為 '未知用戶'，嘗試從 email 中提取用戶名
+    if (authorName == '未知用戶' && comment['authorEmail'] != null) {
+      authorName = comment['authorEmail'].split('@')[0];
+    }
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.blue[100],
+                child: comment['authorPhotoURL'] != null
+                    ? null
+                    : Icon(Icons.person, color: Colors.blue[600], size: 16),
+                backgroundImage: comment['authorPhotoURL'] != null
+                    ? NetworkImage(comment['authorPhotoURL'])
+                    : null,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      authorName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      _formatTimestamp(comment['createdAt']),
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Text(
+            comment['content'] ?? '',
+            style: TextStyle(fontSize: 14, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 以下是原有的其他頁面，保持不變
 // 整合的成長頁面（合併每日任務、角色培養、澆水任務）
 class IntegratedGrowthPage extends StatefulWidget {
   @override
@@ -492,8 +1862,8 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
     int currentHappiness = petData['happiness'] ?? 50;
     int currentLevel = petData['level'] ?? 1;
 
-    int newExp = currentExp + 5;  // 降低經驗值獲取，更符合養成感覺
-    int newHappiness = (currentHappiness + 3).clamp(0, 100);  // 降低快樂值獲取
+    int newExp = currentExp + 5;
+    int newHappiness = (currentHappiness + 3).clamp(0, 100);
     int newLevel = currentLevel;
 
     // 升級邏輯
@@ -830,6 +2200,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
     );
   }
 }
+
 // 喝水任務
 class DrinkingTask extends StatefulWidget {
   final VoidCallback onCompleted;
@@ -1202,110 +2573,6 @@ class _MeditationTaskState extends State<MeditationTask> with TickerProviderStat
     );
   }
 }
-
-// 寫日記任務（移除字數限制）
-class DiaryTask extends StatefulWidget {
-  final VoidCallback onCompleted;
-
-  const DiaryTask({Key? key, required this.onCompleted}) : super(key: key);
-
-  @override
-  State<DiaryTask> createState() => _DiaryTaskState();
-}
-
-class _DiaryTaskState extends State<DiaryTask> {
-  final TextEditingController _diaryController = TextEditingController();
-
-  @override
-  void dispose() {
-    _diaryController.dispose();
-    super.dispose();
-  }
-
-  void _completeDiary() {
-    if (_diaryController.text.trim().isNotEmpty) {
-      widget.onCompleted();
-      Navigator.of(context).pop();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('請至少寫一些內容')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('心情日記 📖'),
-        backgroundColor: Colors.orange[600],
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        color: Colors.orange[50],
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '今天是 ${DateTime.now().month}/${DateTime.now().day}',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 10),
-              Text(
-                '寫下你今天的心情和想法...',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              SizedBox(height: 20),
-              Expanded(
-                child: Container(
-                  padding: EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 5,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _diaryController,
-                    maxLines: null,
-                    expands: true,
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      hintText: '開始寫下你的心情...\n\n你今天過得怎麼樣？\n有什麼特別的事情發生嗎？\n你現在的感受是什麼？',
-                      hintStyle: TextStyle(color: Colors.grey),
-                    ),
-                    style: TextStyle(fontSize: 16, height: 1.5),
-                  ),
-                ),
-              ),
-              SizedBox(height: 20),
-              Center(
-                child: ElevatedButton(
-                  onPressed: _completeDiary,
-                  child: Text('完成日記', style: TextStyle(fontSize: 16)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange[600],
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-
 
 // 感恩練習任務
 class GratitudeTask extends StatefulWidget {
