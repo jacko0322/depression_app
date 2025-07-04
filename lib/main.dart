@@ -9,6 +9,12 @@ import 'dart:math';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // 確保 Firebase 初始化完成後再檢查認證狀態
+  print('Firebase 初始化完成');
+  User? currentUser = FirebaseAuth.instance.currentUser;
+  print('應用啟動時的用戶狀態: ${currentUser?.email ?? "未登入"}');
+
   runApp(DepressionApp());
 }
 
@@ -23,27 +29,865 @@ class DepressionApp extends StatelessWidget {
       ),
       home: AuthWrapper(),
       debugShowCheckedModeBanner: false,
+      // 確保路由正確處理
+      onGenerateRoute: (settings) {
+        switch (settings.name) {
+          case '/login':
+            return MaterialPageRoute(builder: (context) => LoginPage());
+          case '/main':
+            return MaterialPageRoute(builder: (context) => MainHomePage());
+          default:
+            return MaterialPageRoute(builder: (context) => AuthWrapper());
+        }
+      },
     );
   }
 }
 
-// 驗證包裝器 - 檢查用戶登入狀態
-class AuthWrapper extends StatelessWidget {
+// 驗證包裝器 - 檢查用戶登入狀態和問卷狀態
+class AuthWrapper extends StatefulWidget {
+  @override
+  _AuthWrapperState createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  @override
+  void initState() {
+    super.initState();
+    // 添加額外的狀態檢查
+    _checkInitialAuthState();
+  }
+
+  void _checkInitialAuthState() {
+    User? user = FirebaseAuth.instance.currentUser;
+    print('AuthWrapper 初始化 - 當前用戶: ${user?.email ?? "未登入"}');
+
+    // 強制刷新認證狀態
+    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      print('AuthWrapper 認證狀態變化: ${user?.email ?? "未登入"}');
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
+        print('AuthWrapper StreamBuilder - 連接狀態: ${snapshot.connectionState}');
+        print('AuthWrapper StreamBuilder - 是否有數據: ${snapshot.hasData}');
+        print('AuthWrapper StreamBuilder - 用戶: ${snapshot.data?.email ?? "null"}');
+
+        // 顯示載入畫面
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          print('AuthWrapper - 顯示載入畫面');
+          return SplashScreen();
+        }
+
+        // 處理錯誤狀態
+        if (snapshot.hasError) {
+          print('AuthWrapper - 認證錯誤: ${snapshot.error}');
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  SizedBox(height: 16),
+                  Text('認證錯誤'),
+                  SizedBox(height: 8),
+                  Text('${snapshot.error}'),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        // 強制重新建構
+                      });
+                    },
+                    child: Text('重試'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // 檢查是否有用戶登入
+        if (snapshot.hasData && snapshot.data != null) {
+          print('用戶已登入: ${snapshot.data?.email}');
+          return QuestionnaireWrapper();
+        } else {
+          print('用戶未登入，顯示登入頁面');
+          return LoginPage();
+        }
+      },
+    );
+  }
+}
+
+// 問卷包裝器 - 檢查是否需要填寫問卷
+class QuestionnaireWrapper extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    print('QuestionnaireWrapper - 用戶ID: $userId');
+
+    if (userId == null) {
+      print('QuestionnaireWrapper - 用戶ID為空，返回登入頁面');
+      // 如果用戶ID為空，返回登入頁面
+      return LoginPage();
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        print('QuestionnaireWrapper - Firestore 連接狀態: ${snapshot.connectionState}');
+
         if (snapshot.connectionState == ConnectionState.waiting) {
           return SplashScreen();
         }
 
-        if (snapshot.hasData) {
-          return MainHomePage();
+        if (snapshot.hasError) {
+          print('QuestionnaireWrapper - Firestore 錯誤: ${snapshot.error}');
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 48, color: Colors.red),
+                SizedBox(height: 16),
+                Text('載入錯誤：${snapshot.error}'),
+                SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    // 重新載入
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => AuthWrapper()),
+                    );
+                  },
+                  child: Text('重試'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // 獲取用戶資料
+        Map<String, dynamic> userData = {};
+        if (snapshot.hasData && snapshot.data!.exists) {
+          userData = snapshot.data!.data() as Map<String, dynamic>;
+          print('QuestionnaireWrapper - 用戶資料: ${userData.keys.toList()}');
         } else {
-          return LoginPage();
+          print('QuestionnaireWrapper - 用戶資料不存在');
+        }
+
+        // 檢查是否需要填寫問卷
+        bool needsQuestionnaire = _shouldShowQuestionnaire(userData);
+        print('QuestionnaireWrapper - 是否需要問卷: $needsQuestionnaire');
+
+        if (needsQuestionnaire) {
+          return BDIWelcomeScreen();
+        } else {
+          return MainHomePage();
         }
       },
+    );
+  }
+
+  bool _shouldShowQuestionnaire(Map<String, dynamic> userData) {
+    // 檢查是否為新用戶（從未填寫過問卷）
+    if (!userData.containsKey('lastQuestionnaireDate')) {
+      print('用戶從未填寫問卷');
+      return true;
+    }
+
+    // 檢查距離上次填寫是否超過兩週
+    Timestamp? lastQuestionnaireDate = userData['lastQuestionnaireDate'];
+    if (lastQuestionnaireDate == null) {
+      print('問卷日期為空');
+      return true;
+    }
+
+    DateTime lastDate = lastQuestionnaireDate.toDate();
+    DateTime now = DateTime.now();
+    int daysDifference = now.difference(lastDate).inDays;
+
+    print('距離上次填寫問卷天數: $daysDifference');
+    // 兩週 = 14 天
+    return daysDifference >= 14;
+  }
+}
+
+// BDI 問卷歡迎頁面
+class BDIWelcomeScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.blue, Colors.lightBlueAccent],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.psychology, size: 80, color: Colors.white),
+                const SizedBox(height: 24),
+                const Text(
+                  'BDI 憂鬱症檢測',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Beck Depression Inventory',
+                  style: TextStyle(fontSize: 16, color: Colors.white70),
+                ),
+                const SizedBox(height: 48),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.3)),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.white, size: 32),
+                      SizedBox(height: 12),
+                      Text(
+                        '本檢測包含21個問題，每題有4個選項\n請根據過去兩週的感受誠實回答\n檢測結果僅供參考，如有需要請諮詢專業醫師',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 48),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => BDIForm()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 48,
+                      vertical: 16,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 8,
+                  ),
+                  child: const Text(
+                    '開始檢測',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// BDI 問卷表單
+class BDIForm extends StatefulWidget {
+  @override
+  State<BDIForm> createState() => _BDIFormState();
+}
+
+class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
+  List<int> answers = List.filled(21, -1);
+  int currentQuestionIndex = 0;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  // BDI標準問題及選項
+  final List<Map<String, dynamic>> bdiQuestions = [
+    {
+      'question': '悲傷感',
+      'options': ['我不感到悲傷', '我大部分時間感到悲傷', '我一直感到悲傷', '我感到極度悲傷或不快樂，無法忍受'],
+    },
+    {
+      'question': '悲觀',
+      'options': ['我對未來不特別沮喪', '我對未來感到沮喪', '我覺得沒有什麼可期待的', '我覺得未來是絕望的，情況不會好轉'],
+    },
+    {
+      'question': '過去的失敗',
+      'options': [
+        '我不覺得自己是個失敗者',
+        '我覺得我比一般人失敗得更多',
+        '當我回顧過去，我看到很多失敗',
+        '我覺得我是個完全失敗的人',
+      ],
+    },
+    {
+      'question': '快樂的喪失',
+      'options': [
+        '我從事情中得到的滿足感和過去一樣',
+        '我不像過去那樣享受事物',
+        '我從任何事情中都得不到真正的滿足',
+        '我對一切都不滿意或感到厭倦',
+      ],
+    },
+    {
+      'question': '罪惡感',
+      'options': ['我不特別感到內疚', '我有很多時候感到內疚', '我大部分時間感到內疚', '我一直感到內疚'],
+    },
+    {
+      'question': '懲罰感',
+      'options': ['我不覺得我正在被懲罰', '我覺得我可能被懲罰', '我預期會被懲罰', '我覺得我正在被懲罰'],
+    },
+    {
+      'question': '自我厭惡',
+      'options': ['我對自己的感覺和過去一樣', '我對自己失去了信心', '我對自己失望', '我討厭自己'],
+    },
+    {
+      'question': '自我指責',
+      'options': [
+        '我不會比平時更嚴厲地批評或責備自己',
+        '我比過去更批評自己',
+        '我為自己做錯的每件事責備自己',
+        '我為發生的每件壞事責備自己',
+      ],
+    },
+    {
+      'question': '自殺念頭或願望',
+      'options': ['我沒有任何自殺的念頭', '我有自殺的念頭，但我不會執行', '我想要自殺', '如果有機會，我會自殺'],
+    },
+    {
+      'question': '哭泣',
+      'options': ['我哭泣的次數不比過去多', '我比過去哭得更多', '我為每一件小事哭泣', '我想哭，但哭不出來'],
+    },
+    {
+      'question': '激動',
+      'options': [
+        '我不比平時更煩躁或焦慮',
+        '我比平時更容易煩躁或激動',
+        '我感到非常煩躁或激動',
+        '我太煩躁或激動以至於無法靜下來',
+      ],
+    },
+    {
+      'question': '失去興趣',
+      'options': [
+        '我對其他人或活動的興趣沒有改變',
+        '我對人或活動的興趣比以前少',
+        '我對大多數事情失去了興趣',
+        '我對一切都失去了興趣',
+      ],
+    },
+    {
+      'question': '猶豫不決',
+      'options': ['我做決定的能力和過去一樣好', '我比過去更難做決定', '我在做決定時遇到很大困難', '我再也無法做任何決定'],
+    },
+    {
+      'question': '無價值感',
+      'options': [
+        '我不覺得自己沒有價值',
+        '我認為自己不如其他人有價值或有用',
+        '我覺得自己比其他人更沒有價值',
+        '我覺得自己完全沒有價值',
+      ],
+    },
+    {
+      'question': '失去活力',
+      'options': ['我的活力和過去一樣', '我比過去活力更少', '我沒有足夠的活力做很多事', '我沒有活力做任何事'],
+    },
+    {
+      'question': '睡眠模式改變',
+      'options': [
+        '我的睡眠模式沒有改變',
+        '我比平時睡得更多或更少',
+        '我比平時早醒2小時且難以重新入睡',
+        '我比平時早醒幾個小時且無法重新入睡',
+      ],
+    },
+    {
+      'question': '易怒',
+      'options': ['我不比平時更易怒', '我比平時更易怒', '我比平時易怒得多', '我一直都很易怒'],
+    },
+    {
+      'question': '食慾改變',
+      'options': ['我的食慾沒有改變', '我的食慾比以前稍差', '我的食慾比以前差很多', '我完全沒有食慾'],
+    },
+    {
+      'question': '專注困難',
+      'options': [
+        '我能像過去一樣集中注意力',
+        '我不能像過去那樣集中注意力',
+        '我很難長時間專注於任何事情',
+        '我發現我無法專注於任何事情',
+      ],
+    },
+    {
+      'question': '疲倦或疲勞',
+      'options': [
+        '我不比平時更疲倦或疲勞',
+        '我比平時更容易疲倦或疲勞',
+        '我太疲倦或疲勞以至於無法做很多過去做的事',
+        '我太疲倦或疲勞以至於無法做大部分過去做的事',
+      ],
+    },
+    {
+      'question': '對性的興趣喪失',
+      'options': ['我對性的興趣沒有明顯改變', '我對性的興趣比以前少', '我對性的興趣明顯減少', '我完全失去了對性的興趣'],
+    },
+  ];
+
+  int calculateBDIScore() {
+    return answers
+        .where((answer) => answer != -1)
+        .fold(0, (sum, answer) => sum + answer);
+  }
+
+  String getResultInterpretation(int score) {
+    if (score <= 13) {
+      return '無或極輕微憂鬱';
+    } else if (score <= 19) {
+      return '輕度憂鬱';
+    } else if (score <= 28) {
+      return '中度憂鬱';
+    } else {
+      return '重度憂鬱';
+    }
+  }
+
+  Color getResultColor(int score) {
+    if (score <= 13) {
+      return Colors.green;
+    } else if (score <= 19) {
+      return Colors.orange;
+    } else if (score <= 28) {
+      return Colors.deepOrange;
+    } else {
+      return Colors.red;
+    }
+  }
+
+  String getResultDescription(int score) {
+    if (score <= 13) {
+      return '您的憂鬱程度在正常範圍內，情緒狀態良好。';
+    } else if (score <= 19) {
+      return '您可能存在輕度憂鬱傾向，建議關注自己的情緒狀態。';
+    } else if (score <= 28) {
+      return '您可能存在中度憂鬱傾向，建議尋求專業心理諮詢。';
+    } else {
+      return '您可能存在重度憂鬱傾向，強烈建議儘快尋求專業醫療協助。';
+    }
+  }
+
+  Future<void> _saveQuestionnaireResult(int score) async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      // 獲取當前時間
+      DateTime now = DateTime.now();
+
+      // 準備詳細的答案記錄
+      List<Map<String, dynamic>> detailedAnswers = [];
+      for (int i = 0; i < bdiQuestions.length; i++) {
+        detailedAnswers.add({
+          'questionIndex': i,
+          'question': bdiQuestions[i]['question'],
+          'selectedOption': answers[i],
+          'optionText': answers[i] >= 0 ? bdiQuestions[i]['options'][answers[i]] : '',
+          'score': answers[i],
+        });
+      }
+
+      // 儲存詳細問卷結果
+      DocumentReference questionnaireRef = await FirebaseFirestore.instance
+          .collection('questionnaire_results')
+          .add({
+        'userId': userId,
+        'score': score,
+        'level': getResultInterpretation(score),
+        'description': getResultDescription(score),
+        'completedAt': FieldValue.serverTimestamp(),
+        'completedDate': now.toIso8601String().split('T')[0], // 日期字串
+        'answers': answers, // 原始答案陣列
+        'detailedAnswers': detailedAnswers, // 詳細答案記錄
+        'questionnaireType': 'BDI',
+        'questionnaireVersion': '1.0',
+      });
+
+      print('問卷結果儲存成功，ID: ${questionnaireRef.id}');
+
+      // 更新用戶的最後問卷資料
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .set({
+        'lastQuestionnaireDate': FieldValue.serverTimestamp(),
+        'lastQuestionnaireScore': score,
+        'lastQuestionnaireLevel': getResultInterpretation(score),
+        'lastQuestionnaireId': questionnaireRef.id,
+        'questionnaireCompleted': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print('用戶資料更新成功');
+    } catch (e) {
+      print('儲存問卷結果失敗: $e');
+      // 顯示錯誤訊息給用戶
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('儲存失敗：$e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showResult() {
+    int score = calculateBDIScore();
+    String result = getResultInterpretation(score);
+    Color resultColor = getResultColor(score);
+    String description = getResultDescription(score);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.assessment, color: resultColor, size: 32),
+            const SizedBox(width: 12),
+            const Text('檢測結果'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: resultColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: resultColor.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '總分: $score 分',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: resultColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    result,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: resultColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              description,
+              style: const TextStyle(fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '⚠️ 重要提醒：本檢測結果僅供參考，不能替代專業醫療診斷。如有需要，請諮詢專業醫師或心理健康專家。',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () async {
+              // 顯示載入狀態
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+
+              try {
+                await _saveQuestionnaireResult(score);
+                // 關閉載入對話框
+                Navigator.of(context).pop();
+                // 關閉結果對話框
+                Navigator.of(context).pop();
+                // 強制導航到主頁面
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => MainHomePage()),
+                      (route) => false,
+                );
+              } catch (e) {
+                // 關閉載入對話框
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('儲存失敗，請重試'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('進入應用'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _nextQuestion() {
+    if (answers[currentQuestionIndex] == -1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('請選擇一個選項後再繼續'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _animationController.reset();
+    if (currentQuestionIndex < 20) {
+      setState(() {
+        currentQuestionIndex++;
+      });
+      _animationController.forward();
+    } else {
+      _showResult();
+    }
+  }
+
+  void _previousQuestion() {
+    if (currentQuestionIndex > 0) {
+      _animationController.reset();
+      setState(() {
+        currentQuestionIndex--;
+      });
+      _animationController.forward();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double progress = (currentQuestionIndex + 1) / 21;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('問題 ${currentQuestionIndex + 1} / 21'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        automaticallyImplyLeading: false, // 禁用返回按鈕
+      ),
+      body: Column(
+        children: [
+          // 進度條
+          Container(
+            height: 8,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.grey[300],
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+
+          // 問題內容
+          Expanded(
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 問題標題
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        bdiQuestions[currentQuestionIndex]['question'],
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // 選項
+                    ...List.generate(4, (index) {
+                      bool isSelected = answers[currentQuestionIndex] == index;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? Colors.blue
+                                : Colors.grey.withOpacity(0.3),
+                            width: isSelected ? 2 : 1,
+                          ),
+                          color: isSelected
+                              ? Colors.blue.withOpacity(0.1)
+                              : Colors.white,
+                        ),
+                        child: RadioListTile<int>(
+                          title: Text(
+                            bdiQuestions[currentQuestionIndex]['options'][index],
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              color: isSelected ? Colors.blue : Colors.black87,
+                            ),
+                          ),
+                          value: index,
+                          groupValue: answers[currentQuestionIndex],
+                          onChanged: (value) {
+                            setState(() {
+                              answers[currentQuestionIndex] = value!;
+                            });
+                          },
+                          activeColor: Colors.blue,
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // 按鈕區域
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.2),
+                  spreadRadius: 1,
+                  blurRadius: 5,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // 上一題按鈕
+                if (currentQuestionIndex > 0)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _previousQuestion,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: const BorderSide(color: Colors.blue),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('上一題'),
+                    ),
+                  ),
+
+                if (currentQuestionIndex > 0) const SizedBox(width: 16),
+
+                // 下一題/提交按鈕
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _nextQuestion,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      currentQuestionIndex < 20 ? '下一題' : '提交結果',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -96,6 +940,24 @@ class _LoginPageState extends State<LoginPage> {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
   bool _isLogin = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 確保在登入頁面顯示時，用戶確實已登出
+    _checkAuthState();
+  }
+
+  Future<void> _checkAuthState() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      print('檢測到用戶已登入: ${user.email}，但仍在登入頁面');
+      // 如果用戶已登入但仍在登入頁面，可能是狀態不同步
+      // 讓 AuthWrapper 重新檢查狀態
+    } else {
+      print('用戶未登入，正確顯示登入頁面');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -170,14 +1032,7 @@ class _LoginPageState extends State<LoginPage> {
                 // Google登入按鈕
                 OutlinedButton.icon(
                   onPressed: _isLoading ? null : _handleGoogleSignIn,
-                  icon: Image.asset(
-                    'assets/google_icon.png', // 需要添加Google圖標
-                    height: 24,
-                    width: 24,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Icon(Icons.login, color: Colors.red);
-                    },
-                  ),
+                  icon: Icon(Icons.login, color: Colors.red), // 使用內建圖標替代
                   label: Text('使用 Google 登入'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.grey[700],
@@ -220,53 +1075,55 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      // 清除之前的狀態
+      await _clearPreviousState();
+
       if (_isLogin) {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
+        UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
+        print('Email 登入成功: ${userCredential.user?.email}');
 
-        // 為現有用戶更新 displayName（如果為空的話）
-        String userId = FirebaseAuth.instance.currentUser!.uid;
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userId)
-            .get();
+        // 為現有用戶更新或創建用戶資料
+        await _ensureUserDocument();
 
-        if (userDoc.exists) {
-          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>? ?? {};
-          if (userData['displayName'] == null || userData['displayName'] == '未知用戶' || userData['displayName'] == '') {
-            String displayName = _emailController.text.trim().split('@')[0];
+        // 顯示成功訊息
+        _showMessage('登入成功！');
 
-            await FirebaseFirestore.instance.collection('users').doc(userId).update({
-              'displayName': displayName,
-            });
+        // 等待一下確保狀態穩定
+        await Future.delayed(Duration(milliseconds: 500));
 
-            // 同時更新 Firebase Auth 的 displayName
-            await FirebaseAuth.instance.currentUser!.updateDisplayName(displayName);
-          }
-        }
+        // 登入成功後，強制導航到 AuthWrapper
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => AuthWrapper()),
+              (route) => false,
+        );
       } else {
         UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
+        print('Email 註冊成功: ${userCredential.user?.email}');
 
-        // 建立用戶資料
-        String displayName = _emailController.text.trim().split('@')[0];
-        await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-          'email': _emailController.text.trim(),
-          'displayName': displayName,
-          'role': '個人使用者',
-          'createdAt': FieldValue.serverTimestamp(),
-          'signInMethod': 'email',
-          'isAnonymous': false,
-        });
+        // 建立新用戶資料
+        await _createUserDocument(userCredential.user!);
 
-        // 同時更新 Firebase Auth 的 displayName
-        await userCredential.user!.updateDisplayName(displayName);
+        // 顯示成功訊息
+        _showMessage('註冊成功！');
+
+        // 等待一下確保狀態穩定
+        await Future.delayed(Duration(milliseconds: 500));
+
+        // 註冊成功後，強制導航到 AuthWrapper
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => AuthWrapper()),
+              (route) => false,
+        );
       }
+
     } catch (e) {
+      print('Email 登入/註冊失敗: $e');
       _showMessage(_getErrorMessage(e.toString()));
     }
 
@@ -282,74 +1139,142 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // 觸發Google登入流程
+      // 清除之前的狀態
+      await _clearPreviousState();
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
-        // 用戶取消登入
+        print('Google 登入被取消');
         setState(() {
           _isLoading = false;
         });
         return;
       }
 
-      // 獲取認證詳細信息
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
-      // 創建新的認證憑據
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // 用憑據登入Firebase
       UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      print('Google 登入成功: ${userCredential.user?.email}');
 
-      // 檢查是否為新用戶，如果是則創建用戶資料
+      // 確保用戶資料存在
       if (userCredential.additionalUserInfo?.isNewUser == true) {
-        String displayName = userCredential.user!.displayName ??
-            userCredential.user!.email?.split('@')[0] ??
-            '用戶';
-
-        await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-          'email': userCredential.user!.email,
-          'displayName': displayName,
-          'photoURL': userCredential.user!.photoURL,
-          'role': '個人使用者',
-          'createdAt': FieldValue.serverTimestamp(),
-          'signInMethod': 'google',
-          'isAnonymous': false,
-        });
+        print('新 Google 用戶，創建用戶資料');
+        await _createUserDocument(userCredential.user!);
       } else {
-        // 為現有用戶更新 displayName（如果為空的話）
-        DocumentSnapshot userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userCredential.user!.uid)
-            .get();
-
-        if (userDoc.exists) {
-          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-          if (userData['displayName'] == null || userData['displayName'] == '未知用戶') {
-            String displayName = userCredential.user!.displayName ??
-                userCredential.user!.email?.split('@')[0] ??
-                '用戶';
-
-            await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).update({
-              'displayName': displayName,
-              'photoURL': userCredential.user!.photoURL,
-            });
-          }
-        }
+        print('現有 Google 用戶，檢查用戶資料');
+        await _ensureUserDocument();
       }
 
+      // 顯示成功訊息
       _showMessage('登入成功！');
+
+      // 等待一下確保狀態穩定
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // 登入成功後，強制導航到 AuthWrapper
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => AuthWrapper()),
+            (route) => false,
+      );
+
     } catch (e) {
+      print('Google 登入失敗: $e');
       _showMessage('Google登入失敗：${_getErrorMessage(e.toString())}');
     }
 
     setState(() {
       _isLoading = false;
     });
+  }
+
+  // 清除之前的狀態
+  Future<void> _clearPreviousState() async {
+    try {
+      // 確保 Google Sign-In 狀態清除
+      if (await _googleSignIn.isSignedIn()) {
+        await _googleSignIn.signOut();
+        print('清除了之前的 Google 登入狀態');
+      }
+    } catch (e) {
+      print('清除之前狀態時出錯: $e');
+    }
+  }
+
+  // 確保用戶文檔存在
+  Future<void> _ensureUserDocument() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        // 如果用戶文檔不存在，創建一個
+        await _createUserDocument(user);
+      } else {
+        // 如果文檔存在，更新顯示名稱（如果需要）
+        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>? ?? {};
+        if (userData['displayName'] == null || userData['displayName'] == '未知用戶' || userData['displayName'] == '') {
+          String displayName = user.displayName ??
+              user.email?.split('@')[0] ??
+              '用戶${user.uid.substring(0, 6)}';
+
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({
+            'displayName': displayName,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+          await user.updateDisplayName(displayName);
+        }
+      }
+    } catch (e) {
+      print('確保用戶文檔時出錯: $e');
+    }
+  }
+
+  // 創建新用戶文檔
+  Future<void> _createUserDocument(User user) async {
+    try {
+      String displayName = user.displayName ??
+          user.email?.split('@')[0] ??
+          '用戶${user.uid.substring(0, 6)}';
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'email': user.email,
+        'displayName': displayName,
+        'photoURL': user.photoURL,
+        'role': '個人使用者',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'signInMethod': user.providerData.first.providerId,
+        'isAnonymous': false,
+        'questionnaireCompleted': false,
+        'lastQuestionnaireDate': null,
+        'lastQuestionnaireScore': null,
+        'lastQuestionnaireLevel': null,
+      });
+
+      await user.updateDisplayName(displayName);
+
+      print('用戶文檔創建成功');
+    } catch (e) {
+      print('創建用戶文檔時出錯: $e');
+    }
   }
 
   void _showMessage(String message) {
@@ -370,7 +1295,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// 主頁面 - 新增社群功能
+// 主頁面 - 修正登出邏輯
 class MainHomePage extends StatefulWidget {
   @override
   _MainHomePageState createState() => _MainHomePageState();
@@ -383,26 +1308,114 @@ class _MainHomePageState extends State<MainHomePage> {
   final List<Widget> _pages = [
     IntegratedGrowthPage(),
     MoodRecordPage(),
-    CommunityPage(), // 新增社群頁面
+    CommunityPage(),
     RelaxationPage(),
     EducationPage(),
   ];
 
-  // 登出功能（支援Google登出）
+  // 優化的登出功能
   Future<void> _handleSignOut() async {
     try {
+      // 顯示確認對話框
+      bool? confirmSignOut = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('確認登出'),
+          content: Text('您確定要登出嗎？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text('登出'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmSignOut != true) return;
+
+      // 顯示載入狀態
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('正在登出...', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      );
+
+      // 執行登出操作
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        if (await _googleSignIn.isSignedIn()) {
+        print('開始登出用戶: ${user.email}');
+
+        // 清除 Google Sign-In 狀態
+        try {
           await _googleSignIn.signOut();
+          print('Google 登出成功');
+        } catch (e) {
+          print('Google 登出錯誤: $e');
         }
+
+        // 清除 Firebase Auth 狀態
         await FirebaseAuth.instance.signOut();
+        print('Firebase 登出成功');
+
+        // 等待一下確保狀態完全清除
+        await Future.delayed(Duration(milliseconds: 500));
       }
-    } catch (e) {
+
+      // 關閉載入對話框
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+
+      // 強制導航到登入頁面並清除所有路由棧
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => LoginPage()),
+            (route) => false,
+      );
+
+      // 顯示成功訊息
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('登出失敗：$e')),
+        SnackBar(
+          content: Text('登出成功'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+    } catch (e) {
+      // 關閉載入對話框（如果還在顯示）
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+
+      print('登出失敗: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('登出失敗：${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
       );
     }
+  }
+
+  void _showQuestionnaireHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => QuestionnaireHistoryPage()),
+    );
   }
 
   @override
@@ -414,7 +1427,11 @@ class _MainHomePageState extends State<MainHomePage> {
         backgroundColor: Colors.blue[400],
         foregroundColor: Colors.white,
         actions: [
-          // 顯示用戶頭像（如果有的話）
+          IconButton(
+            onPressed: _showQuestionnaireHistory,
+            icon: Icon(Icons.history),
+            tooltip: '問卷歷史',
+          ),
           if (FirebaseAuth.instance.currentUser?.photoURL != null)
             Padding(
               padding: EdgeInsets.only(right: 8),
@@ -428,16 +1445,31 @@ class _MainHomePageState extends State<MainHomePage> {
             onSelected: (value) {
               if (value == 'logout') {
                 _handleSignOut();
+              } else if (value == 'questionnaire') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => BDIWelcomeScreen()),
+                );
               }
             },
             itemBuilder: (context) => [
               PopupMenuItem(
+                value: 'questionnaire',
+                child: Row(
+                  children: [
+                    Icon(Icons.quiz, size: 20),
+                    SizedBox(width: 8),
+                    Text('重新填寫問卷'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, size: 20),
+                    Icon(Icons.logout, size: 20, color: Colors.red),
                     SizedBox(width: 8),
-                    Text('登出'),
+                    Text('登出', style: TextStyle(color: Colors.red)),
                   ],
                 ),
               ),
@@ -461,7 +1493,7 @@ class _MainHomePageState extends State<MainHomePage> {
         items: [
           BottomNavigationBarItem(icon: Icon(Icons.eco), label: '成長花園'),
           BottomNavigationBarItem(icon: Icon(Icons.mood), label: '心情記錄'),
-          BottomNavigationBarItem(icon: Icon(Icons.forum), label: '社群支持'), // 新增社群
+          BottomNavigationBarItem(icon: Icon(Icons.forum), label: '社群支持'),
           BottomNavigationBarItem(icon: Icon(Icons.spa), label: '舒緩心理'),
           BottomNavigationBarItem(icon: Icon(Icons.school), label: '資源教育'),
         ],
@@ -470,7 +1502,212 @@ class _MainHomePageState extends State<MainHomePage> {
   }
 }
 
-// 社群頁面 - 新增功能
+// 問卷歷史頁面 - 增強顯示內容
+class QuestionnaireHistoryPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('問卷歷史'),
+          backgroundColor: Colors.blue[400],
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.login, size: 64, color: Colors.grey[400]),
+              SizedBox(height: 16),
+              Text('請先登入', style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('問卷歷史'),
+        backgroundColor: Colors.blue[400],
+        foregroundColor: Colors.white,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('questionnaire_results')
+            .where('userId', isEqualTo: userId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+                  SizedBox(height: 16),
+                  Text('載入錯誤', style: TextStyle(fontSize: 16)),
+                  SizedBox(height: 8),
+                  Text('${snapshot.error}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                ],
+              ),
+            );
+          }
+
+          var results = snapshot.data?.docs ?? [];
+
+          // 在客戶端排序
+          results.sort((a, b) {
+            var aData = a.data() as Map<String, dynamic>;
+            var bData = b.data() as Map<String, dynamic>;
+            var aTime = aData['completedAt'] as Timestamp?;
+            var bTime = bData['completedAt'] as Timestamp?;
+            if (aTime == null || bTime == null) return 0;
+            return bTime.compareTo(aTime);
+          });
+
+          if (results.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.quiz_outlined, size: 64, color: Colors.grey[400]),
+                  SizedBox(height: 16),
+                  Text(
+                    '還沒有問卷記錄',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: EdgeInsets.all(16),
+            itemCount: results.length,
+            itemBuilder: (context, index) {
+              var result = results[index].data() as Map<String, dynamic>;
+              int score = result['score'] ?? 0;
+              String level = result['level'] ?? '未知';
+              String description = result['description'] ?? '';
+              Timestamp? completedAt = result['completedAt'];
+
+              Color resultColor = _getResultColor(score);
+
+              return Card(
+                margin: EdgeInsets.only(bottom: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ExpansionTile(
+                  leading: CircleAvatar(
+                    backgroundColor: resultColor.withOpacity(0.1),
+                    child: Icon(
+                      Icons.assessment,
+                      color: resultColor,
+                    ),
+                  ),
+                  title: Text(
+                    '總分: $score 分',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: resultColor,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: 4),
+                      Text(
+                        level,
+                        style: TextStyle(
+                          color: resultColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        completedAt != null ? _formatDate(completedAt.toDate()) : '未知時間',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '詳細說明：',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            description,
+                            style: TextStyle(fontSize: 14, height: 1.4),
+                          ),
+                          SizedBox(height: 12),
+                          if (result['detailedAnswers'] != null) ...[
+                            Text(
+                              '答案詳情：',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            ...((result['detailedAnswers'] as List).take(3).map((answer) {
+                              return Padding(
+                                padding: EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  '${answer['question']}: ${answer['optionText']}',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                ),
+                              );
+                            }).toList()),
+                            if ((result['detailedAnswers'] as List).length > 3)
+                              Text(
+                                '... 等共21個問題',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Color _getResultColor(int score) {
+    if (score <= 13) return Colors.green;
+    if (score <= 19) return Colors.orange;
+    if (score <= 28) return Colors.deepOrange;
+    return Colors.red;
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+}
+1
+// 社群頁面 - 新增功能1
 class CommunityPage extends StatefulWidget {
   @override
   _CommunityPageState createState() => _CommunityPageState();
