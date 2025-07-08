@@ -44,179 +44,287 @@ class DepressionApp extends StatelessWidget {
   }
 }
 
-// 驗證包裝器 - 檢查用戶登入狀態和問卷狀態
 class AuthWrapper extends StatefulWidget {
   @override
   _AuthWrapperState createState() => _AuthWrapperState();
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
+  bool _isInitialized = false;
+  StreamSubscription<User?>? _authSubscription;
+  User? _currentUser;
+  bool _isDisposed = false;
+
   @override
   void initState() {
     super.initState();
-    // 添加額外的狀態檢查
-    _checkInitialAuthState();
+    _initializeAuthAsync();
   }
 
-  void _checkInitialAuthState() {
-    User? user = FirebaseAuth.instance.currentUser;
-    print('AuthWrapper 初始化 - 當前用戶: ${user?.email ?? "未登入"}');
+  Future<void> _initializeAuthAsync() async {
+    try {
+      print('AuthWrapper - 開始異步初始化');
+      await Future.delayed(Duration(milliseconds: 100));
 
-    // 強制刷新認證狀態
-    FirebaseAuth.instance.authStateChanges().listen((User? user) {
-      print('AuthWrapper 認證狀態變化: ${user?.email ?? "未登入"}');
-    });
+      _currentUser = FirebaseAuth.instance.currentUser;
+      print('AuthWrapper - 當前用戶: ${_currentUser?.email ?? "未登入"}');
+
+      _setupAuthListener();
+
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+
+      print('AuthWrapper - 初始化完成');
+    } catch (e) {
+      print('AuthWrapper - 初始化錯誤: $e');
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        print('AuthWrapper StreamBuilder - 連接狀態: ${snapshot.connectionState}');
-        print('AuthWrapper StreamBuilder - 是否有數據: ${snapshot.hasData}');
-        print('AuthWrapper StreamBuilder - 用戶: ${snapshot.data?.email ?? "null"}');
+  void _setupAuthListener() {
+    _authSubscription?.cancel();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
+          (User? user) {
+        print('AuthWrapper - 認證狀態變化: ${user?.email ?? "未登入"}');
 
-        // 顯示載入畫面
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          print('AuthWrapper - 顯示載入畫面');
-          return SplashScreen();
+        if (mounted && !_isDisposed) {
+          scheduleMicrotask(() {
+            if (mounted && !_isDisposed) {
+              setState(() {
+                _currentUser = user;
+              });
+            }
+          });
         }
-
-        // 處理錯誤狀態
-        if (snapshot.hasError) {
-          print('AuthWrapper - 認證錯誤: ${snapshot.error}');
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  SizedBox(height: 16),
-                  Text('認證錯誤'),
-                  SizedBox(height: 8),
-                  Text('${snapshot.error}'),
-                  SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        // 強制重新建構
-                      });
-                    },
-                    child: Text('重試'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        // 檢查是否有用戶登入
-        if (snapshot.hasData && snapshot.data != null) {
-          print('用戶已登入: ${snapshot.data?.email}');
-          return QuestionnaireWrapper();
-        } else {
-          print('用戶未登入，顯示登入頁面');
-          return LoginPage();
-        }
+      },
+      onError: (error) {
+        print('AuthWrapper - 認證監聽錯誤: $error');
       },
     );
   }
-}
 
-// 問卷包裝器 - 檢查是否需要填寫問卷
-class QuestionnaireWrapper extends StatelessWidget {
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return SplashScreen();
+    }
+
+    if (_currentUser != null) {
+      print('用戶已登入: ${_currentUser?.email}');
+      return QuestionnaireWrapper();
+    } else {
+      print('用戶未登入，顯示登入頁面');
+      return LoginPage();
+    }
+  }
+}
+
+
+// 2. 修復後的 QuestionnaireWrapper - 添加權限檢查
+class QuestionnaireWrapper extends StatefulWidget {
+  @override
+  _QuestionnaireWrapperState createState() => _QuestionnaireWrapperState();
+}
+
+class _QuestionnaireWrapperState extends State<QuestionnaireWrapper> {
+  StreamSubscription<DocumentSnapshot>? _userDocSubscription;
+  bool _isDisposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeUserData();
+  }
+
+  Future<void> _initializeUserData() async {
     String? userId = FirebaseAuth.instance.currentUser?.uid;
     print('QuestionnaireWrapper - 用戶ID: $userId');
 
     if (userId == null) {
       print('QuestionnaireWrapper - 用戶ID為空，返回登入頁面');
-      // 如果用戶ID為空，返回登入頁面
-      return LoginPage();
-    }
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        print('QuestionnaireWrapper - Firestore 連接狀態: ${snapshot.connectionState}');
-
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SplashScreen();
-        }
-
-        if (snapshot.hasError) {
-          print('QuestionnaireWrapper - Firestore 錯誤: ${snapshot.error}');
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 48, color: Colors.red),
-                SizedBox(height: 16),
-                Text('載入錯誤：${snapshot.error}'),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
-                    // 重新載入
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => AuthWrapper()),
-                    );
-                  },
-                  child: Text('重試'),
-                ),
-              ],
-            ),
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isDisposed) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => LoginPage()),
           );
         }
+      });
+      return;
+    }
 
-        // 獲取用戶資料
-        Map<String, dynamic> userData = {};
-        if (snapshot.hasData && snapshot.data!.exists) {
-          userData = snapshot.data!.data() as Map<String, dynamic>;
+    try {
+      // 確保用戶文檔存在
+      await _ensureUserDocumentExists(userId);
+
+      // 設置 Firestore 監聽器（包含權限檢查）
+      _setupUserDocListener(userId);
+    } catch (e) {
+      print('QuestionnaireWrapper - 初始化失敗: $e');
+      _showErrorAndRedirect(e.toString());
+    }
+  }
+
+  void _setupUserDocListener(String userId) {
+    _userDocSubscription?.cancel();
+
+    _userDocSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .snapshots()
+        .listen(
+          (DocumentSnapshot snapshot) {
+        if (mounted && !_isDisposed && snapshot.exists) {
+          Map<String, dynamic> userData = snapshot.data() as Map<String, dynamic>;
           print('QuestionnaireWrapper - 用戶資料: ${userData.keys.toList()}');
-        } else {
-          print('QuestionnaireWrapper - 用戶資料不存在');
+
+          bool needsQuestionnaire = _shouldShowQuestionnaire(userData);
+          print('QuestionnaireWrapper - 是否需要問卷: $needsQuestionnaire');
+
+          if (needsQuestionnaire) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => BDIWelcomeScreen()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => MainHomePage()),
+            );
+          }
         }
-
-        // 檢查是否需要填寫問卷
-        bool needsQuestionnaire = _shouldShowQuestionnaire(userData);
-        print('QuestionnaireWrapper - 是否需要問卷: $needsQuestionnaire');
-
-        if (needsQuestionnaire) {
-          return BDIWelcomeScreen();
-        } else {
-          return MainHomePage();
+      },
+      onError: (error) {
+        print('QuestionnaireWrapper - Firestore 監聽錯誤: $error');
+        if (error.toString().contains('PERMISSION_DENIED')) {
+          print('權限被拒絕，可能用戶已登出');
+          _handlePermissionDenied();
         }
       },
     );
   }
 
+  void _handlePermissionDenied() {
+    if (mounted && !_isDisposed) {
+      // 權限被拒絕通常表示用戶已登出，重定向到登入頁面
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LoginPage()),
+      );
+    }
+  }
+
+  Future<void> _ensureUserDocumentExists(String userId) async {
+    try {
+      DocumentReference userDocRef = FirebaseFirestore.instance.collection('users').doc(userId);
+      DocumentSnapshot userDoc = await userDocRef.get();
+
+      if (!userDoc.exists) {
+        User? currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser == null) {
+          throw Exception('用戶已登出');
+        }
+
+        String displayName = currentUser.displayName ??
+            currentUser.email?.split('@')[0] ??
+            '用戶${userId.substring(0, 6)}';
+
+        await userDocRef.set({
+          'email': currentUser.email,
+          'displayName': displayName,
+          'photoURL': currentUser.photoURL,
+          'role': '個人使用者',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'signInMethod': currentUser.providerData.isNotEmpty
+              ? currentUser.providerData.first.providerId
+              : 'email',
+          'isAnonymous': false,
+          'questionnaireCompleted': false,
+          'lastQuestionnaireDate': null,
+          'lastQuestionnaireScore': null,
+          'lastQuestionnaireLevel': null,
+        });
+
+        print('用戶文檔創建成功');
+      }
+    } catch (e) {
+      print('確保用戶文檔存在時出錯: $e');
+      rethrow;
+    }
+  }
+
   bool _shouldShowQuestionnaire(Map<String, dynamic> userData) {
-    // 檢查是否為新用戶（從未填寫過問卷）
-    if (!userData.containsKey('lastQuestionnaireDate')) {
-      print('用戶從未填寫問卷');
+    try {
+      if (!userData.containsKey('lastQuestionnaireDate') ||
+          userData['lastQuestionnaireDate'] == null) {
+        return true;
+      }
+
+      Timestamp? lastQuestionnaireDate = userData['lastQuestionnaireDate'];
+      if (lastQuestionnaireDate == null) {
+        return true;
+      }
+
+      DateTime lastDate = lastQuestionnaireDate.toDate();
+      DateTime now = DateTime.now();
+      int daysDifference = now.difference(lastDate).inDays;
+
+      return daysDifference >= 14;
+    } catch (e) {
+      print('檢查問卷狀態時出錯: $e');
       return true;
     }
+  }
 
-    // 檢查距離上次填寫是否超過兩週
-    Timestamp? lastQuestionnaireDate = userData['lastQuestionnaireDate'];
-    if (lastQuestionnaireDate == null) {
-      print('問卷日期為空');
-      return true;
+  void _showErrorAndRedirect(String error) {
+    if (mounted && !_isDisposed) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('載入錯誤'),
+          content: Text(error),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => LoginPage()),
+                );
+              },
+              child: Text('重新登入'),
+            ),
+          ],
+        ),
+      );
     }
+  }
 
-    DateTime lastDate = lastQuestionnaireDate.toDate();
-    DateTime now = DateTime.now();
-    int daysDifference = now.difference(lastDate).inDays;
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _userDocSubscription?.cancel();
+    super.dispose();
+  }
 
-    print('距離上次填寫問卷天數: $daysDifference');
-    // 兩週 = 14 天
-    return daysDifference >= 14;
+  @override
+  Widget build(BuildContext context) {
+    return SplashScreen();
   }
 }
 
@@ -928,35 +1036,73 @@ class SplashScreen extends StatelessWidget {
   }
 }
 
-// 登入註冊頁面 - 添加Google登入功能
+// 修復類型轉換錯誤的 LoginPage
 class LoginPage extends StatefulWidget {
   @override
   _LoginPageState createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+
   bool _isLogin = true;
   bool _isLoading = false;
+  bool _obscurePassword = true;
+
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
-    // 確保在登入頁面顯示時，用戶確實已登出
+    _initializeAnimations();
     _checkAuthState();
+  }
+
+  void _initializeAnimations() {
+    _animationController = AnimationController(
+      duration: Duration(milliseconds: 1000),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _slideAnimation = Tween<Offset>(
+      begin: Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _animationController.forward();
   }
 
   Future<void> _checkAuthState() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       print('檢測到用戶已登入: ${user.email}，但仍在登入頁面');
-      // 如果用戶已登入但仍在登入頁面，可能是狀態不同步
-      // 讓 AuthWrapper 重新檢查狀態
     } else {
       print('用戶未登入，正確顯示登入頁面');
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _animationController.dispose();
+    super.dispose();
   }
 
   @override
@@ -964,98 +1110,36 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(height: 50),
-                Icon(Icons.psychology, size: 80, color: Colors.blue[400]),
-                SizedBox(height: 30),
-                Text(
-                  _isLogin ? '歡迎回來' : '建立帳戶',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[800],
-                  ),
-                ),
-                SizedBox(height: 40),
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    labelText: '電子郵件',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    prefixIcon: Icon(Icons.email),
-                  ),
-                ),
-                SizedBox(height: 20),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: '密碼',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    prefixIcon: Icon(Icons.lock),
-                  ),
-                ),
-                SizedBox(height: 30),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _handleEmailAuth,
-                  child: _isLoading
-                      ? CircularProgressIndicator(color: Colors.white)
-                      : Text(_isLogin ? '登入' : '註冊'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[400],
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    minimumSize: Size(double.infinity, 50),
-                  ),
-                ),
-                SizedBox(height: 20),
-
-                // 分隔線
-                Row(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: Divider()),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('或', style: TextStyle(color: Colors.grey[600])),
-                    ),
-                    Expanded(child: Divider()),
+                    SizedBox(height: 40),
+                    _buildHeader(),
+                    SizedBox(height: 40),
+                    _buildEmailField(),
+                    SizedBox(height: 16),
+                    _buildPasswordField(),
+                    SizedBox(height: 24),
+                    _buildEmailAuthButton(),
+                    SizedBox(height: 20),
+                    _buildDivider(),
+                    SizedBox(height: 20),
+                    _buildGoogleSignInButton(),
+                    SizedBox(height: 24),
+                    _buildToggleButton(),
+                    SizedBox(height: 16),
+                    _buildForgotPasswordButton(),
                   ],
                 ),
-                SizedBox(height: 20),
-
-                // Google登入按鈕
-                OutlinedButton.icon(
-                  onPressed: _isLoading ? null : _handleGoogleSignIn,
-                  icon: Icon(Icons.login, color: Colors.red), // 使用內建圖標替代
-                  label: Text('使用 Google 登入'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[700],
-                    side: BorderSide(color: Colors.grey[300]!),
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    minimumSize: Size(double.infinity, 50),
-                  ),
-                ),
-                SizedBox(height: 20),
-
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _isLogin = !_isLogin;
-                    });
-                  },
-                  child: Text(
-                    _isLogin ? '還沒有帳戶？立即註冊' : '已有帳戶？立即登入',
-                    style: TextStyle(color: Colors.blue[600]),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1063,10 +1147,259 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // 原有的email/password登入邏輯
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          padding: EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [Colors.blue[300]!, Colors.blue[600]!],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.3),
+                blurRadius: 20,
+                offset: Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.psychology,
+            size: 50,
+            color: Colors.white,
+          ),
+        ),
+        SizedBox(height: 24),
+        Text(
+          _isLogin ? '歡迎回來' : '建立帳戶',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue[800],
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          _isLogin ? '登入您的帳戶繼續使用' : '註冊新帳戶開始您的心靈之旅',
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.grey[600],
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmailField() {
+    return TextFormField(
+      controller: _emailController,
+      keyboardType: TextInputType.emailAddress,
+      decoration: InputDecoration(
+        labelText: '電子郵件',
+        hintText: '請輸入您的電子郵件',
+        prefixIcon: Icon(Icons.email_outlined),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.blue[400]!, width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return '請輸入電子郵件';
+        }
+        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+          return '請輸入有效的電子郵件格式';
+        }
+        return null;
+      },
+    );
+  }
+
+  Widget _buildPasswordField() {
+    return TextFormField(
+      controller: _passwordController,
+      obscureText: _obscurePassword,
+      decoration: InputDecoration(
+        labelText: '密碼',
+        hintText: _isLogin ? '請輸入您的密碼' : '請設定密碼（至少6位）',
+        prefixIcon: Icon(Icons.lock_outlined),
+        suffixIcon: IconButton(
+          icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+          onPressed: () {
+            setState(() {
+              _obscurePassword = !_obscurePassword;
+            });
+          },
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.blue[400]!, width: 2),
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+      ),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return '請輸入密碼';
+        }
+        if (value.length < 6) {
+          return '密碼至少需要6位字符';
+        }
+        return null;
+      },
+    );
+  }
+
+  Widget _buildEmailAuthButton() {
+    return Container(
+      height: 50,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _handleEmailAuth,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue[600],
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 2,
+        ),
+        child: _isLoading
+            ? Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Text('處理中...', style: TextStyle(fontSize: 16)),
+          ],
+        )
+            : Text(
+          _isLogin ? '登入' : '註冊',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: Colors.grey[300])),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            '或',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: Colors.grey[300])),
+      ],
+    );
+  }
+
+  Widget _buildGoogleSignInButton() {
+    return Container(
+      height: 50,
+      child: OutlinedButton.icon(
+        onPressed: _isLoading ? null : _handleGoogleSignIn,
+        icon: Container(
+          width: 20,
+          height: 20,
+          child: Icon(Icons.login, color: Colors.red[600], size: 20),
+        ),
+        label: Text(
+          '使用 Google 登入',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.grey[700],
+          side: BorderSide(color: Colors.grey[300]!, width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToggleButton() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          _isLogin ? '還沒有帳戶？' : '已有帳戶？',
+          style: TextStyle(color: Colors.grey[600]),
+        ),
+        TextButton(
+          onPressed: _isLoading ? null : () {
+            setState(() {
+              _isLogin = !_isLogin;
+              _formKey.currentState?.reset();
+            });
+          },
+          child: Text(
+            _isLogin ? '立即註冊' : '立即登入',
+            style: TextStyle(
+              color: Colors.blue[600],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForgotPasswordButton() {
+    if (!_isLogin) return SizedBox.shrink();
+
+    return Center(
+      child: TextButton(
+        onPressed: _isLoading ? null : _showForgotPasswordDialog,
+        child: Text(
+          '忘記密碼？',
+          style: TextStyle(
+            color: Colors.blue[600],
+            decoration: TextDecoration.underline,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 修復後的 Email/Password 登入邏輯
   Future<void> _handleEmailAuth() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      _showMessage('請填寫所有欄位');
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
@@ -1075,56 +1408,36 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // 清除之前的狀態
-      await _clearPreviousState();
+      UserCredential userCredential;
 
       if (_isLogin) {
-        UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
         print('Email 登入成功: ${userCredential.user?.email}');
-
-        // 為現有用戶更新或創建用戶資料
-        await _ensureUserDocument();
-
-        // 顯示成功訊息
-        _showMessage('登入成功！');
-
-        // 等待一下確保狀態穩定
-        await Future.delayed(Duration(milliseconds: 500));
-
-        // 登入成功後，強制導航到 AuthWrapper
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => AuthWrapper()),
-              (route) => false,
-        );
       } else {
-        UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
         print('Email 註冊成功: ${userCredential.user?.email}');
-
-        // 建立新用戶資料
-        await _createUserDocument(userCredential.user!);
-
-        // 顯示成功訊息
-        _showMessage('註冊成功！');
-
-        // 等待一下確保狀態穩定
-        await Future.delayed(Duration(milliseconds: 500));
-
-        // 註冊成功後，強制導航到 AuthWrapper
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => AuthWrapper()),
-              (route) => false,
-        );
       }
+
+      // 修復後的後處理 - 增加錯誤捕獲
+      await _handlePostLoginSafely(userCredential);
 
     } catch (e) {
       print('Email 登入/註冊失敗: $e');
-      _showMessage(_getErrorMessage(e.toString()));
+      // 檢查是否實際上已經登入成功
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        print('雖然出現錯誤，但用戶實際已登入: ${currentUser.email}');
+        // 直接導航，不顯示錯誤
+        _navigateToApp();
+      } else {
+        _showErrorMessage(_getErrorMessage(e.toString()));
+      }
     }
 
     setState(() {
@@ -1132,15 +1445,15 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  // Google登入邏輯
+  // 修復後的 Google 登入邏輯
   Future<void> _handleGoogleSignIn() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // 清除之前的狀態
-      await _clearPreviousState();
+      // 確保清除之前的狀態
+      await _googleSignIn.signOut();
 
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
@@ -1162,30 +1475,20 @@ class _LoginPageState extends State<LoginPage> {
       UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
       print('Google 登入成功: ${userCredential.user?.email}');
 
-      // 確保用戶資料存在
-      if (userCredential.additionalUserInfo?.isNewUser == true) {
-        print('新 Google 用戶，創建用戶資料');
-        await _createUserDocument(userCredential.user!);
-      } else {
-        print('現有 Google 用戶，檢查用戶資料');
-        await _ensureUserDocument();
-      }
-
-      // 顯示成功訊息
-      _showMessage('登入成功！');
-
-      // 等待一下確保狀態穩定
-      await Future.delayed(Duration(milliseconds: 500));
-
-      // 登入成功後，強制導航到 AuthWrapper
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => AuthWrapper()),
-            (route) => false,
-      );
+      // 修復後的後處理 - 增加錯誤捕獲
+      await _handlePostLoginSafely(userCredential);
 
     } catch (e) {
       print('Google 登入失敗: $e');
-      _showMessage('Google登入失敗：${_getErrorMessage(e.toString())}');
+      // 檢查是否實際上已經登入成功
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        print('雖然出現錯誤，但用戶實際已登入: ${currentUser.email}');
+        // 直接導航，不顯示錯誤
+        _navigateToApp();
+      } else {
+        _showErrorMessage('Google登入失敗：${_getErrorMessage(e.toString())}');
+      }
     }
 
     setState(() {
@@ -1193,109 +1496,236 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  // 清除之前的狀態
-  Future<void> _clearPreviousState() async {
+  // 安全的登入後處理 - 包裝錯誤處理
+  Future<void> _handlePostLoginSafely(UserCredential userCredential) async {
     try {
-      // 確保 Google Sign-In 狀態清除
-      if (await _googleSignIn.isSignedIn()) {
-        await _googleSignIn.signOut();
-        print('清除了之前的 Google 登入狀態');
-      }
+      print('登入成功，開始後處理流程');
+
+      // 安全地創建或更新用戶文檔
+      await _createOrUpdateUserDocumentSafely(userCredential.user!);
+
+      print('用戶文檔處理完成');
+
+      // 顯示成功訊息
+      _showSuccessMessage(_isLogin ? '登入成功！' : '註冊成功！');
+
+      // 導航到應用
+      _navigateToApp();
+
     } catch (e) {
-      print('清除之前狀態時出錯: $e');
-    }
-  }
-
-  // 確保用戶文檔存在
-  Future<void> _ensureUserDocument() async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      if (!userDoc.exists) {
-        // 如果用戶文檔不存在，創建一個
-        await _createUserDocument(user);
+      print('登入後處理失敗: $e');
+      // 即使後處理失敗，如果用戶已登入，還是導航到應用
+      User? currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null) {
+        print('後處理失敗但用戶已登入，直接進入應用');
+        _navigateToApp();
       } else {
-        // 如果文檔存在，更新顯示名稱（如果需要）
-        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>? ?? {};
-        if (userData['displayName'] == null || userData['displayName'] == '未知用戶' || userData['displayName'] == '') {
-          String displayName = user.displayName ??
-              user.email?.split('@')[0] ??
-              '用戶${user.uid.substring(0, 6)}';
-
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .update({
-            'displayName': displayName,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-          await user.updateDisplayName(displayName);
-        }
+        _showErrorMessage('登入後處理失敗：$e');
       }
-    } catch (e) {
-      print('確保用戶文檔時出錯: $e');
     }
   }
 
-  // 創建新用戶文檔
-  Future<void> _createUserDocument(User user) async {
+  // 安全的用戶文檔創建/更新
+  Future<void> _createOrUpdateUserDocumentSafely(User user) async {
     try {
-      String displayName = user.displayName ??
-          user.email?.split('@')[0] ??
-          '用戶${user.uid.substring(0, 6)}';
+      DocumentReference userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      DocumentSnapshot userDoc = await userDocRef.get();
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .set({
+      // 安全地獲取顯示名稱，避免類型轉換錯誤
+      String displayName;
+      try {
+        displayName = user.displayName ??
+            user.email?.split('@')[0] ??
+            '用戶${user.uid.substring(0, 6)}';
+      } catch (e) {
+        print('獲取顯示名稱時出錯: $e');
+        displayName = user.email?.split('@')[0] ?? '用戶${user.uid.substring(0, 6)}';
+      }
+
+      Map<String, dynamic> userData = {
         'email': user.email,
         'displayName': displayName,
         'photoURL': user.photoURL,
-        'role': '個人使用者',
-        'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-        'signInMethod': user.providerData.first.providerId,
+        'signInMethod': user.providerData.isNotEmpty
+            ? user.providerData.first.providerId
+            : 'email',
         'isAnonymous': false,
-        'questionnaireCompleted': false,
-        'lastQuestionnaireDate': null,
-        'lastQuestionnaireScore': null,
-        'lastQuestionnaireLevel': null,
-      });
+      };
 
-      await user.updateDisplayName(displayName);
+      if (!userDoc.exists) {
+        // 新用戶，創建完整文檔
+        userData.addAll({
+          'role': '個人使用者',
+          'createdAt': FieldValue.serverTimestamp(),
+          'questionnaireCompleted': false,
+          'lastQuestionnaireDate': null,
+          'lastQuestionnaireScore': null,
+          'lastQuestionnaireLevel': null,
+        });
 
-      print('用戶文檔創建成功');
+        await userDocRef.set(userData);
+        print('新用戶文檔創建成功');
+      } else {
+        // 現有用戶，只更新必要字段
+        await userDocRef.update(userData);
+        print('現有用戶文檔更新成功');
+      }
+
+      // 安全地更新 Firebase Auth 的 displayName
+      try {
+        if (user.displayName != displayName) {
+          await user.updateDisplayName(displayName);
+          print('用戶顯示名稱更新成功');
+        }
+      } catch (e) {
+        print('更新用戶顯示名稱時出錯（可忽略）: $e');
+        // 這個錯誤可以忽略，不影響登入功能
+      }
+
     } catch (e) {
-      print('創建用戶文檔時出錯: $e');
+      print('創建/更新用戶文檔時出錯: $e');
+      // 不要重新拋出錯誤，因為這不應該阻止登入
     }
   }
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+  // 導航到應用
+  void _navigateToApp() {
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => AuthWrapper()),
+            (route) => false,
+      );
+    }
+  }
+
+  // 忘記密碼功能
+  void _showForgotPasswordDialog() {
+    final TextEditingController resetEmailController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            Icon(Icons.lock_reset, color: Colors.blue[600]),
+            SizedBox(width: 8),
+            Text('重設密碼'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('請輸入您的電子郵件地址，我們會發送重設密碼的連結給您。'),
+            SizedBox(height: 16),
+            TextField(
+              controller: resetEmailController,
+              decoration: InputDecoration(
+                labelText: '電子郵件',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              resetEmailController.dispose();
+              Navigator.pop(context);
+            },
+            child: Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              String email = resetEmailController.text.trim();
+              if (email.isEmpty) {
+                _showErrorMessage('請輸入電子郵件地址');
+                return;
+              }
+
+              try {
+                await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                resetEmailController.dispose();
+                Navigator.pop(context);
+                _showSuccessMessage('重設密碼郵件已發送！請檢查您的信箱。');
+              } catch (e) {
+                _showErrorMessage('發送重設郵件失敗：${_getErrorMessage(e.toString())}');
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[600],
+              foregroundColor: Colors.white,
+            ),
+            child: Text('發送'),
+          ),
+        ],
+      ),
     );
   }
 
+  // 訊息顯示方法
+  void _showSuccessMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
+  void _showErrorMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  // 錯誤訊息轉換
   String _getErrorMessage(String error) {
-    if (error.contains('user-not-found')) return '找不到此用戶';
-    if (error.contains('wrong-password')) return '密碼錯誤';
-    if (error.contains('email-already-in-use')) return '此電子郵件已被使用';
-    if (error.contains('weak-password')) return '密碼強度不足';
-    if (error.contains('invalid-email')) return '電子郵件格式錯誤';
-    if (error.contains('network-request-failed')) return '網絡連接失敗';
+    if (error.contains('user-not-found')) return '找不到此用戶，請檢查電子郵件是否正確';
+    if (error.contains('wrong-password')) return '密碼錯誤，請重新輸入';
+    if (error.contains('email-already-in-use')) return '此電子郵件已被註冊，請使用其他郵件或直接登入';
+    if (error.contains('weak-password')) return '密碼強度不足，請使用至少6位字符';
+    if (error.contains('invalid-email')) return '電子郵件格式錯誤，請檢查格式';
+    if (error.contains('network-request-failed')) return '網絡連接失敗，請檢查網路連接';
     if (error.contains('too-many-requests')) return '請求過於頻繁，請稍後再試';
-    return '發生錯誤，請稍後再試';
+    if (error.contains('invalid-credential')) return '登入憑證無效，請重新登入';
+    if (error.contains('account-exists-with-different-credential')) {
+      return '此郵件已使用其他方式註冊，請嘗試其他登入方式';
+    }
+    if (error.contains('PigeonUserDetails') || error.contains('type cast')) {
+      return '登入處理中出現技術問題，但您已成功登入';
+    }
+    return '發生未知錯誤，請稍後再試';
   }
 }
-
-// 主頁面 - 修正登出邏輯
+// 主頁面 - 優化版本，解決 lag 和登出問題
 class MainHomePage extends StatefulWidget {
   @override
   _MainHomePageState createState() => _MainHomePageState();
@@ -1304,6 +1734,8 @@ class MainHomePage extends StatefulWidget {
 class _MainHomePageState extends State<MainHomePage> {
   int _currentIndex = 0;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  bool _isSigningOut = false;
+  bool _isDisposed = false;
 
   final List<Widget> _pages = [
     IntegratedGrowthPage(),
@@ -1313,22 +1745,59 @@ class _MainHomePageState extends State<MainHomePage> {
     EducationPage(),
   ];
 
-  // 優化的登出功能
+  @override
+  void initState() {
+    super.initState();
+    _checkUserState();
+  }
+
+  // 檢查用戶狀態
+  void _checkUserState() {
+    User? user = FirebaseAuth.instance.currentUser;
+    print('MainHomePage 初始化 - 當前用戶: ${user?.email ?? "未登入"}');
+
+    if (user == null) {
+      // 如果沒有用戶，立即導航到登入頁面
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isDisposed) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => AuthWrapper()),
+                (route) => false,
+          );
+        }
+      });
+    }
+  }
+
+  // 優化的登出功能 - 避免阻塞主線程
   Future<void> _handleSignOut() async {
+    if (_isSigningOut) return; // 防止重複點擊
+
     try {
       // 顯示確認對話框
       bool? confirmSignOut = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('確認登出'),
-          content: Text('您確定要登出嗎？'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Row(
+            children: [
+              Icon(Icons.logout, color: Colors.red[600]),
+              SizedBox(width: 8),
+              Text('確認登出'),
+            ],
+          ),
+          content: Text('您確定要登出嗎？\n登出後需要重新登入才能使用應用。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: Text('取消'),
+              child: Text('取消', style: TextStyle(color: Colors.grey[600])),
             ),
-            TextButton(
+            ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[600],
+                foregroundColor: Colors.white,
+              ),
               child: Text('登出'),
             ),
           ],
@@ -1337,80 +1806,139 @@ class _MainHomePageState extends State<MainHomePage> {
 
       if (confirmSignOut != true) return;
 
-      // 顯示載入狀態
+      setState(() {
+        _isSigningOut = true;
+      });
+
+      print('開始優化登出流程');
+
+      // 顯示載入狀態對話框
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('正在登出...', style: TextStyle(color: Colors.white)),
-            ],
+        builder: (context) => PopScope(
+          canPop: false,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 16),
+                  Text(
+                    '正在登出...',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
 
-      // 執行登出操作
+      // 異步執行登出操作，避免阻塞 UI
+      await _performSignOutAsync();
+
+    } catch (e) {
+      print('登出失敗: $e');
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _isSigningOut = false;
+        });
+
+        // 關閉載入對話框
+        if (Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+
+        _showErrorMessage('登出失敗：${_getErrorMessage(e.toString())}');
+      }
+    }
+  }
+
+  Future<void> _performSignOutAsync() async {
+    try {
       User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         print('開始登出用戶: ${user.email}');
 
-        // 清除 Google Sign-In 狀態
-        try {
-          await _googleSignIn.signOut();
-          print('Google 登出成功');
-        } catch (e) {
-          print('Google 登出錯誤: $e');
-        }
+        // 使用 Future.wait 並行執行登出操作，避免阻塞
+        await Future.wait([
+          // 1. 清除 Google Sign-In 狀態
+          Future(() async {
+            try {
+              if (await _googleSignIn.isSignedIn()) {
+                await _googleSignIn.disconnect();
+                await _googleSignIn.signOut();
+                print('Google 登出成功');
+              }
+            } catch (e) {
+              print('Google 登出錯誤: $e');
+              // 不要因為 Google 登出失敗就停止整個流程
+            }
+          }),
+          // 2. 清除 Firebase Auth 狀態
+          FirebaseAuth.instance.signOut(),
+        ]);
 
-        // 清除 Firebase Auth 狀態
-        await FirebaseAuth.instance.signOut();
-        print('Firebase 登出成功');
+        print('所有登出操作完成');
 
-        // 等待一下確保狀態完全清除
+        // 等待狀態完全清除
         await Future.delayed(Duration(milliseconds: 500));
+
+        // 驗證登出狀態
+        User? currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          print('警告：用戶狀態未完全清除，重試登出');
+          await FirebaseAuth.instance.signOut();
+          await Future.delayed(Duration(milliseconds: 300));
+        }
       }
 
       // 關閉載入對話框
-      if (Navigator.canPop(context)) {
+      if (mounted && Navigator.canPop(context)) {
         Navigator.of(context).pop();
       }
 
-      // 強制導航到登入頁面並清除所有路由棧
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => LoginPage()),
-            (route) => false,
-      );
+      // 導航到 AuthWrapper 並清除所有路由棧
+      if (mounted && !_isDisposed) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => AuthWrapper()),
+              (route) => false,
+        );
+      }
 
-      // 顯示成功訊息
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('登出成功'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      print('登出流程完成');
+
+      // 延遲顯示成功訊息
+      Future.delayed(Duration(milliseconds: 500), () {
+        if (mounted && !_isDisposed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('登出成功'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      });
 
     } catch (e) {
-      // 關閉載入對話框（如果還在顯示）
-      if (Navigator.canPop(context)) {
-        Navigator.of(context).pop();
-      }
-
-      print('登出失敗: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('登出失敗：${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      print('執行登出時出錯: $e');
+      rethrow;
     }
   }
 
+  // 顯示問卷歷史
   void _showQuestionnaireHistory() {
     Navigator.push(
       context,
@@ -1418,85 +1946,327 @@ class _MainHomePageState extends State<MainHomePage> {
     );
   }
 
+  // 顯示用戶資料
+  void _showUserProfile() {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.blue[100],
+              backgroundImage: user.photoURL != null ? NetworkImage(user.photoURL!) : null,
+              child: user.photoURL == null ? Icon(Icons.person, color: Colors.blue[600]) : null,
+            ),
+            SizedBox(width: 12),
+            Text('個人資料'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildProfileItem('姓名', user.displayName ?? '未設定'),
+            SizedBox(height: 8),
+            _buildProfileItem('電子郵件', user.email ?? '未知'),
+            SizedBox(height: 8),
+            _buildProfileItem('登入方式', _getSignInMethod(user)),
+            SizedBox(height: 8),
+            _buildProfileItem('註冊時間', _formatDate(user.metadata.creationTime)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('關閉'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileItem(String label, String? value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        SizedBox(height: 2),
+        Text(
+          value ?? '未知',
+          style: TextStyle(fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  String _getSignInMethod(User user) {
+    if (user.providerData.isEmpty) return '未知';
+
+    String providerId = user.providerData.first.providerId;
+    switch (providerId) {
+      case 'google.com':
+        return 'Google';
+      case 'password':
+        return '電子郵件';
+      default:
+        return providerId;
+    }
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return '未知';
+    return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+  }
+
+  // 重新填寫問卷
+  void _retakeQuestionnaire() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            Icon(Icons.quiz, color: Colors.blue[600]),
+            SizedBox(width: 8),
+            Text('重新填寫問卷'),
+          ],
+        ),
+        content: Text('您確定要重新填寫 BDI 憂鬱症檢測問卷嗎？\n\n新的結果會覆蓋之前的記錄。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => BDIWelcomeScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[600],
+              foregroundColor: Colors.white,
+            ),
+            child: Text('確定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 顯示錯誤訊息
+  void _showErrorMessage(String message) {
+    if (mounted && !_isDisposed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          duration: Duration(seconds: 4),
+          action: SnackBarAction(
+            label: '重試',
+            textColor: Colors.white,
+            onPressed: () => _handleSignOut(),
+          ),
+        ),
+      );
+    }
+  }
+
+  // 錯誤訊息轉換
+  String _getErrorMessage(String error) {
+    if (error.contains('network')) {
+      return '網路連接問題，請檢查網路後重試';
+    } else if (error.contains('permission')) {
+      return '權限錯誤，請重新啟動應用';
+    } else if (error.contains('timeout')) {
+      return '操作超時，請重試';
+    }
+    return '發生未知錯誤，請稍後再試';
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    User? currentUser = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text('心靈陪伴'),
         backgroundColor: Colors.blue[400],
         foregroundColor: Colors.white,
+        elevation: 2,
         actions: [
+          // 問卷歷史按鈕
           IconButton(
-            onPressed: _showQuestionnaireHistory,
+            onPressed: _isSigningOut ? null : _showQuestionnaireHistory,
             icon: Icon(Icons.history),
             tooltip: '問卷歷史',
           ),
-          if (FirebaseAuth.instance.currentUser?.photoURL != null)
+
+          // 用戶頭像（如果有的話）
+          if (currentUser?.photoURL != null && !_isSigningOut)
             Padding(
               padding: EdgeInsets.only(right: 8),
-              child: CircleAvatar(
-                backgroundImage: NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!),
-                radius: 16,
+              child: GestureDetector(
+                onTap: _showUserProfile,
+                child: CircleAvatar(
+                  backgroundImage: NetworkImage(currentUser!.photoURL!),
+                  radius: 16,
+                ),
               ),
             ),
-          PopupMenuButton(
-            icon: Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'logout') {
-                _handleSignOut();
-              } else if (value == 'questionnaire') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => BDIWelcomeScreen()),
-                );
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'questionnaire',
-                child: Row(
-                  children: [
-                    Icon(Icons.quiz, size: 20),
-                    SizedBox(width: 8),
-                    Text('重新填寫問卷'),
-                  ],
+
+          // 登出狀態指示器或選單按鈕
+          if (_isSigningOut)
+            Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               ),
-              PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, size: 20, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('登出', style: TextStyle(color: Colors.red)),
-                  ],
+            )
+          else
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert),
+              tooltip: '更多選項',
+              onSelected: (value) {
+                switch (value) {
+                  case 'profile':
+                    _showUserProfile();
+                    break;
+                  case 'questionnaire':
+                    _retakeQuestionnaire();
+                    break;
+                  case 'logout':
+                    _handleSignOut();
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'profile',
+                  child: Row(
+                    children: [
+                      Icon(Icons.person, size: 20, color: Colors.blue[600]),
+                      SizedBox(width: 8),
+                      Text('個人資料'),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+                PopupMenuItem(
+                  value: 'questionnaire',
+                  child: Row(
+                    children: [
+                      Icon(Icons.quiz, size: 20, color: Colors.green[600]),
+                      SizedBox(width: 8),
+                      Text('重新填寫問卷'),
+                    ],
+                  ),
+                ),
+                PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'logout',
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout, size: 20, color: Colors.red[600]),
+                      SizedBox(width: 8),
+                      Text('登出', style: TextStyle(color: Colors.red[600])),
+                    ],
+                  ),
+                ),
+              ],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
         ],
       ),
-      body: _pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.blue[600],
-        unselectedItemColor: Colors.grey[600],
-        selectedFontSize: 12,
-        unselectedFontSize: 10,
-        items: [
-          BottomNavigationBarItem(icon: Icon(Icons.eco), label: '成長花園'),
-          BottomNavigationBarItem(icon: Icon(Icons.mood), label: '心情記錄'),
-          BottomNavigationBarItem(icon: Icon(Icons.forum), label: '社群支持'),
-          BottomNavigationBarItem(icon: Icon(Icons.spa), label: '舒緩心理'),
-          BottomNavigationBarItem(icon: Icon(Icons.school), label: '資源教育'),
-        ],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: _isSigningOut ? null : (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: Colors.blue[600],
+          unselectedItemColor: Colors.grey[600],
+          selectedFontSize: 12,
+          unselectedFontSize: 10,
+          elevation: 0,
+          backgroundColor: Colors.white,
+          items: [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.eco),
+              activeIcon: Icon(Icons.eco, size: 28),
+              label: '成長花園',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.mood),
+              activeIcon: Icon(Icons.mood, size: 28),
+              label: '心情記錄',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.forum),
+              activeIcon: Icon(Icons.forum, size: 28),
+              label: '社群支持',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.spa),
+              activeIcon: Icon(Icons.spa, size: 28),
+              label: '舒緩心理',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.school),
+              activeIcon: Icon(Icons.school, size: 28),
+              label: '資源教育',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1706,7 +2476,7 @@ class QuestionnaireHistoryPage extends StatelessWidget {
     return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
-1
+
 // 社群頁面 - 新增功能1
 class CommunityPage extends StatefulWidget {
   @override
@@ -1777,8 +2547,8 @@ class _CommunityPageState extends State<CommunityPage> with SingleTickerProvider
             child: TabBarView(
               controller: _tabController,
               children: [
-                CommunityFeedPage(),
-                MyPostsPage(),
+                SafeCommunityFeedPage(),
+                SafeMyPostsPage(),
               ],
             ),
           ),
@@ -1798,198 +2568,308 @@ class _CommunityPageState extends State<CommunityPage> with SingleTickerProvider
   }
 }
 
-// 社群動態頁面
-class CommunityFeedPage extends StatelessWidget {
+// 4. 安全的社群動態頁面 - 包含權限檢查
+class SafeCommunityFeedPage extends StatefulWidget {
   @override
-  Widget build(BuildContext context) {
-    // 確認用戶登入狀態
+  _SafeCommunityFeedPageState createState() => _SafeCommunityFeedPageState();
+}
+
+class _SafeCommunityFeedPageState extends State<SafeCommunityFeedPage> {
+  StreamSubscription<QuerySnapshot>? _postsSubscription;
+  List<QueryDocumentSnapshot> _posts = [];
+  bool _isLoading = true;
+  String? _error;
+  bool _isDisposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupPostsListener();
+  }
+
+  void _setupPostsListener() {
     String? userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) {
+      setState(() {
+        _error = '用戶未登入';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    _postsSubscription = FirebaseFirestore.instance
+        .collection('community_posts')
+        .limit(50)
+        .snapshots()
+        .listen(
+          (QuerySnapshot snapshot) {
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _posts = snapshot.docs;
+            _isLoading = false;
+            _error = null;
+          });
+
+          // 在客戶端排序
+          _posts.sort((a, b) {
+            var aData = a.data() as Map<String, dynamic>;
+            var bData = b.data() as Map<String, dynamic>;
+            var aTime = aData['createdAt'] as Timestamp?;
+            var bTime = bData['createdAt'] as Timestamp?;
+            if (aTime == null || bTime == null) return 0;
+            return bTime.compareTo(aTime);
+          });
+        }
+      },
+      onError: (error) {
+        print('CommunityFeedPage - Firestore 錯誤: $error');
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _error = error.toString();
+            _isLoading = false;
+          });
+
+          if (error.toString().contains('PERMISSION_DENIED')) {
+            // 權限被拒絕，可能需要重新登入
+            _handlePermissionError();
+          }
+        }
+      },
+    );
+  }
+
+  void _handlePermissionError() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('權限錯誤'),
+        content: Text('無法載入社群內容，請重新登入。'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => LoginPage()),
+              );
+            },
+            child: Text('重新登入'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _postsSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.login, size: 64, color: Colors.grey[400]),
+            Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
             SizedBox(height: 16),
+            Text('載入錯誤'),
+            SizedBox(height: 8),
             Text(
-              '請先登入以查看社群內容',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              '請檢查網路連接或重新登入',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _isLoading = true;
+                  _error = null;
+                });
+                _setupPostsListener();
+              },
+              child: Text('重試'),
             ),
           ],
         ),
       );
     }
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('community_posts')
-          .limit(50)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
-                SizedBox(height: 16),
-                Text('載入錯誤', style: TextStyle(fontSize: 16)),
-                SizedBox(height: 8),
-                Text(
-                  '請檢查網路連接',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
+    if (_posts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.forum_outlined, size: 64, color: Colors.grey[400]),
+            SizedBox(height: 16),
+            Text(
+              '還沒有人分享心情',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
-          );
-        }
-
-        var posts = snapshot.data?.docs ?? [];
-
-        // 在客戶端排序
-        posts.sort((a, b) {
-          var aData = a.data() as Map<String, dynamic>;
-          var bData = b.data() as Map<String, dynamic>;
-          var aTime = aData['createdAt'] as Timestamp?;
-          var bTime = bData['createdAt'] as Timestamp?;
-          if (aTime == null || bTime == null) return 0;
-          return bTime.compareTo(aTime);
-        });
-
-        if (posts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.forum_outlined, size: 64, color: Colors.grey[400]),
-                SizedBox(height: 16),
-                Text(
-                  '還沒有人分享心情',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '成為第一個分享的人吧！',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                ),
-              ],
+            SizedBox(height: 8),
+            Text(
+              '成為第一個分享的人吧！',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
-          );
-        }
+          ],
+        ),
+      );
+    }
 
-        return ListView.builder(
-          padding: EdgeInsets.all(12),
-          itemCount: posts.length,
-          itemBuilder: (context, index) {
-            var post = posts[index].data() as Map<String, dynamic>;
-            return CommunityPostCard(
-              postId: posts[index].id,
-              postData: post,
-            );
-          },
+    return ListView.builder(
+      padding: EdgeInsets.all(12),
+      itemCount: _posts.length,
+      itemBuilder: (context, index) {
+        var post = _posts[index].data() as Map<String, dynamic>;
+        return CommunityPostCard(
+          postId: _posts[index].id,
+          postData: post,
         );
       },
     );
   }
 }
 
-// 個人貼文頁面
-class MyPostsPage extends StatelessWidget {
+// 5. 安全的個人貼文頁面
+class SafeMyPostsPage extends StatefulWidget {
   @override
-  Widget build(BuildContext context) {
+  _SafeMyPostsPageState createState() => _SafeMyPostsPageState();
+}
+
+class _SafeMyPostsPageState extends State<SafeMyPostsPage> {
+  StreamSubscription<QuerySnapshot>? _postsSubscription;
+  List<QueryDocumentSnapshot> _posts = [];
+  bool _isLoading = true;
+  String? _error;
+  bool _isDisposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupMyPostsListener();
+  }
+
+  void _setupMyPostsListener() {
     String? userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) {
-      return Center(child: Text('請先登入'));
+      setState(() {
+        _error = '用戶未登入';
+        _isLoading = false;
+      });
+      return;
     }
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('community_posts')
-          .where('authorId', isEqualTo: userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
-        }
+    _postsSubscription = FirebaseFirestore.instance
+        .collection('community_posts')
+        .where('authorId', isEqualTo: userId)
+        .snapshots()
+        .listen(
+          (QuerySnapshot snapshot) {
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _posts = snapshot.docs;
+            _isLoading = false;
+            _error = null;
+          });
 
-        if (snapshot.hasError) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
-                SizedBox(height: 16),
-                Text('載入錯誤', style: TextStyle(fontSize: 16)),
-                SizedBox(height: 8),
-                Text(
-                  '請到 Firebase Console 創建複合索引',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
-                    // 重新載入
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => MyPostsPage()),
-                    );
-                  },
-                  child: Text('重試'),
-                ),
-              ],
+          // 在客戶端排序
+          _posts.sort((a, b) {
+            var aData = a.data() as Map<String, dynamic>;
+            var bData = b.data() as Map<String, dynamic>;
+            var aTime = aData['createdAt'] as Timestamp?;
+            var bTime = bData['createdAt'] as Timestamp?;
+            if (aTime == null || bTime == null) return 0;
+            return bTime.compareTo(aTime);
+          });
+        }
+      },
+      onError: (error) {
+        print('MyPostsPage - Firestore 錯誤: $error');
+        if (mounted && !_isDisposed) {
+          setState(() {
+            _error = error.toString();
+            _isLoading = false;
+          });
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _postsSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.red[400]),
+            SizedBox(height: 16),
+            Text('載入錯誤'),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _isLoading = true;
+                  _error = null;
+                });
+                _setupMyPostsListener();
+              },
+              child: Text('重試'),
             ),
-          );
-        }
+          ],
+        ),
+      );
+    }
 
-        var posts = snapshot.data?.docs ?? [];
-
-        // 在客戶端排序
-        posts.sort((a, b) {
-          var aData = a.data() as Map<String, dynamic>;
-          var bData = b.data() as Map<String, dynamic>;
-          var aTime = aData['createdAt'] as Timestamp?;
-          var bTime = bData['createdAt'] as Timestamp?;
-          if (aTime == null || bTime == null) return 0;
-          return bTime.compareTo(aTime);
-        });
-
-        if (posts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.note_outlined, size: 64, color: Colors.grey[400]),
-                SizedBox(height: 16),
-                Text(
-                  '你還沒有分享過心情',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '點擊右下角的按鈕開始分享',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                ),
-              ],
+    if (_posts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.note_outlined, size: 64, color: Colors.grey[400]),
+            SizedBox(height: 16),
+            Text(
+              '你還沒有分享過心情',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
-          );
-        }
+            SizedBox(height: 8),
+            Text(
+              '點擊右下角的按鈕開始分享',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            ),
+          ],
+        ),
+      );
+    }
 
-        return ListView.builder(
-          padding: EdgeInsets.all(12),
-          itemCount: posts.length,
-          itemBuilder: (context, index) {
-            var post = posts[index].data() as Map<String, dynamic>;
-            return CommunityPostCard(
-              postId: posts[index].id,
-              postData: post,
-              isMyPost: true,
-            );
-          },
+    return ListView.builder(
+      padding: EdgeInsets.all(12),
+      itemCount: _posts.length,
+      itemBuilder: (context, index) {
+        var post = _posts[index].data() as Map<String, dynamic>;
+        return CommunityPostCard(
+          postId: _posts[index].id,
+          postData: post,
+          isMyPost: true,
         );
       },
     );
