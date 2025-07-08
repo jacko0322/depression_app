@@ -5870,7 +5870,7 @@ class _HealingQuotePageState extends State<HealingQuotePage> with SingleTickerPr
   }
 }
 
-// 資源教育頁面
+// 資源教育頁面 - 主頁面
 class EducationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -5880,37 +5880,2335 @@ class EducationPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '資源教育',
+            '資源教育中心',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
               color: Colors.blue[800],
             ),
           ),
+          SizedBox(height: 10),
+          Text(
+            '關注心理健康，提升生活品質',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[600],
+            ),
+          ),
           SizedBox(height: 20),
-          _buildEducationCard('認識憂鬱症', '了解憂鬱症的症狀和成因', Icons.psychology, Colors.blue),
-          _buildEducationCard('情緒管理技巧', '學習有效的情緒調節方法', Icons.emoji_emotions, Colors.green),
-          _buildEducationCard('睡眠健康', '改善睡眠品質的方法', Icons.bedtime, Colors.purple),
-          _buildEducationCard('人際關係', '建立健康的人際互動', Icons.people, Colors.orange),
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: 2,
+              crossAxisSpacing: 15,
+              mainAxisSpacing: 15,
+              children: [
+                _buildEducationCard(
+                  context,
+                  '認識憂鬱症',
+                  '了解憂鬱症的症狀和成因',
+                  '🧠',
+                  Colors.blue,
+                      () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => DepressionEducationPage()),
+                  ),
+                ),
+                _buildEducationCard(
+                  context,
+                  '情緒管理技巧',
+                  '學習有效的情緒調節方法',
+                  '😊',
+                  Colors.green,
+                      () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => EmotionManagementPage()),
+                  ),
+                ),
+                _buildEducationCard(
+                  context,
+                  '睡眠健康',
+                  '改善睡眠品質的方法',
+                  '🌙',
+                  Colors.purple,
+                      () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => SleepHealthPage()),
+                  ),
+                ),
+                _buildEducationCard(
+                  context,
+                  '人際關係',
+                  '建立健康的人際互動',
+                  '👥',
+                  Colors.orange,
+                      () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => RelationshipPage()),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 緊急聯絡區域
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(20),
+            margin: EdgeInsets.only(top: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.red[400]!, Colors.red[600]!],
+              ),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  '需要立即協助嗎？',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '如果您正面臨心理危機或有自殺念頭，請立即尋求專業幫助',
+                  style: TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 15),
+                ElevatedButton(
+                  onPressed: () => _showEmergencyContacts(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.red[600],
+                  ),
+                  child: Text('緊急聯絡資訊'),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildEducationCard(String title, String subtitle, IconData icon, MaterialColor color) {
+  Widget _buildEducationCard(
+      BuildContext context,
+      String title,
+      String subtitle,
+      String emoji,
+      Color color,
+      VoidCallback onTap,
+      ) {
     return Card(
-      margin: EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: color[400],
-          child: Icon(icon, color: Colors.white),
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [color.withOpacity(0.7), color],
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(emoji, style: TextStyle(fontSize: 32)),
+              SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 4),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: Colors.white70),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
         ),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: Icon(Icons.arrow_forward_ios),
-        onTap: () {
-          // 這裡可以實作具體的教育內容
-        },
+      ),
+    );
+  }
+
+  void _showEmergencyContacts(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.emergency, color: Colors.red),
+            SizedBox(width: 8),
+            Text('緊急聯絡資訊', style: TextStyle(color: Colors.red)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('🆘 24小時專線服務', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 15),
+              _buildEmergencyContact('生命線協談專線', '1995', context),
+              _buildEmergencyContact('張老師專線', '1980', context),
+              _buildEmergencyContact('安心專線', '1925', context),
+              _buildEmergencyContact('緊急救護', '119', context),
+              _buildEmergencyContact('報警專線', '110', context),
+              SizedBox(height: 15),
+              Text('💡 網路資源', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Text('• 衛生福利部心理健康司\n• 台灣自殺防治學會\n• 董氏基金會心理衛生中心\n• 各縣市心理衛生中心'),
+              SizedBox(height: 15),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '⚠️ 如有立即生命危險，請撥打 110 或 119。尋求專業幫助是勇敢的表現，您並不孤單。',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmergencyContact(String title, String number, BuildContext context) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(child: Text(title)),
+          GestureDetector(
+            onTap: () {
+              // 這裡可以整合撥號功能
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('撥號: $number')),
+              );
+            },
+            child: Text(
+              number,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 認識憂鬱症頁面
+class DepressionEducationPage extends StatefulWidget {
+  @override
+  _DepressionEducationPageState createState() => _DepressionEducationPageState();
+}
+
+class _DepressionEducationPageState extends State<DepressionEducationPage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.blue[50],
+      appBar: AppBar(
+        title: Text('認識憂鬱症'),
+        backgroundColor: Colors.blue[600],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionCard(
+              '什麼是憂鬱症？',
+              '憂鬱症是一種常見的心理疾病，會影響一個人的感受、思考和行為方式。它不僅僅是暫時的情緒低落，而是一種持續的狀態，會干擾日常生活和工作。',
+              Icons.psychology,
+              Colors.blue,
+            ),
+            _buildSectionCard(
+              '常見症狀',
+              null,
+              Icons.checklist,
+              Colors.orange,
+              symptoms: [
+                '持續的悲傷或空虛感',
+                '對日常活動失去興趣',
+                '睡眠問題（失眠或嗜睡）',
+                '食慾改變',
+                '疲勞和精力不足',
+                '難以集中注意力',
+                '自我價值感低落'
+              ],
+            ),
+            _buildSectionCard(
+              '可能的成因',
+              null,
+              Icons.psychology,
+              Colors.green,
+              symptoms: [
+                '生物因素：遺傳、大腦化學物質失衡',
+                '心理因素：創傷經歷、壓力事件',
+                '環境因素：生活變故、人際關係問題',
+                '醫學因素：某些疾病或藥物副作用'
+              ],
+            ),
+            _buildSectionCard(
+              '治療方法',
+              null,
+              Icons.healing,
+              Colors.purple,
+              symptoms: [
+                '心理治療：認知行為治療、談話治療',
+                '藥物治療：抗憂鬱藥物',
+                '生活方式調整：規律運動、健康飲食',
+                '社會支持：家人朋友的陪伴',
+                '專業諮詢：心理師或精神科醫師'
+              ],
+            ),
+            SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showProfessionalHelp(),
+                    icon: Icon(Icons.phone),
+                    label: Text('聯繫專業人士'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showSelfAssessment(),
+                    icon: Icon(Icons.quiz),
+                    label: Text('自我評估'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard(String title, String? description, IconData icon, Color color, {List<String>? symptoms}) {
+    return Card(
+      margin: EdgeInsets.only(bottom: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: color,
+                  child: Icon(icon, color: Colors.white),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (description != null) ...[
+              SizedBox(height: 15),
+              Text(description, style: TextStyle(fontSize: 16, height: 1.5)),
+            ],
+            if (symptoms != null) ...[
+              SizedBox(height: 15),
+              ...symptoms.map((symptom) => Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('✓ ', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+                    Expanded(child: Text(symptom, style: TextStyle(fontSize: 14, height: 1.4))),
+                  ],
+                ),
+              )).toList(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showProfessionalHelp() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('專業協助資源'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('🏥 醫療機構：', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('• 精神科門診\n• 心理師諮詢\n• 心理衛生中心'),
+              SizedBox(height: 15),
+              Text('📞 專線服務：', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('• 1925 安心專線\n• 1995 生命線\n• 1980 張老師'),
+              SizedBox(height: 15),
+              Text('💡 溫馨提醒：', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('尋求專業幫助是勇敢的表現，不要害怕踏出第一步。'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSelfAssessment() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => DepressionAssessmentPage()),
+    );
+  }
+}
+
+// 憂鬱症自我評估頁面
+class DepressionAssessmentPage extends StatefulWidget {
+  @override
+  _DepressionAssessmentPageState createState() => _DepressionAssessmentPageState();
+}
+
+class _DepressionAssessmentPageState extends State<DepressionAssessmentPage> {
+  List<double> answers = [0, 0, 0];
+  final List<String> questions = [
+    '我經常感到悲傷或情緒低落',
+    '我對以往喜歡的活動失去興趣',
+    '我難以入睡或睡眠品質差',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('憂鬱情緒自我評估'),
+        backgroundColor: Colors.blue[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '以下問題請根據最近兩週的感受回答：',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 30),
+            Expanded(
+              child: ListView.builder(
+                itemCount: questions.length,
+                itemBuilder: (context, index) {
+                  return Card(
+                    margin: EdgeInsets.only(bottom: 20),
+                    child: Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${index + 1}. ${questions[index]}',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                          ),
+                          SizedBox(height: 15),
+                          Slider(
+                            value: answers[index],
+                            min: 0,
+                            max: 3,
+                            divisions: 3,
+                            label: _getSliderLabel(answers[index].round()),
+                            onChanged: (value) {
+                              setState(() {
+                                answers[index] = value;
+                              });
+                            },
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('從不', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                              Text('偶爾', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                              Text('經常', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                              Text('總是', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            ElevatedButton(
+              onPressed: _calculateResult,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+                minimumSize: Size(double.infinity, 50),
+              ),
+              child: Text('查看結果', style: TextStyle(fontSize: 16)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getSliderLabel(int value) {
+    switch (value) {
+      case 0: return '從不';
+      case 1: return '偶爾';
+      case 2: return '經常';
+      case 3: return '總是';
+      default: return '';
+    }
+  }
+
+  void _calculateResult() {
+    int total = answers.map((e) => e.round()).reduce((a, b) => a + b);
+
+    String result = "";
+    String recommendation = "";
+    Color color = Colors.green;
+
+    if (total <= 3) {
+      result = "目前情緒狀態良好";
+      recommendation = "繼續保持健康的生活習慣，定期自我關注。";
+      color = Colors.green;
+    } else if (total <= 6) {
+      result = "可能有輕微的情緒困擾";
+      recommendation = "建議多關注自己的情緒變化，嘗試放鬆技巧。";
+      color = Colors.orange;
+    } else {
+      result = "建議尋求專業協助";
+      recommendation = "您的情緒狀態可能需要專業人士的關注和幫助。";
+      color = Colors.red;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('評估結果'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  Text('$total/9', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: color)),
+                  SizedBox(height: 10),
+                  Text(result, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+                ],
+              ),
+            ),
+            SizedBox(height: 15),
+            Text(recommendation, style: TextStyle(fontSize: 14, height: 1.4)),
+            SizedBox(height: 15),
+            Text(
+              '⚠️ 此評估僅供參考，不能替代專業診斷。如有需要，請尋求專業協助。',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+          if (total > 6)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // 可以引導到專業協助頁面
+              },
+              child: Text('尋求協助', style: TextStyle(color: Colors.red)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// 情緒管理技巧頁面
+class EmotionManagementPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.green[50],
+      appBar: AppBar(
+        title: Text('情緒管理技巧'),
+        backgroundColor: Colors.green[600],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          children: [
+            _buildTechniqueCard(
+              context,
+              '深呼吸法',
+              '透過控制呼吸來調節情緒',
+              Icons.air,
+              Colors.teal,
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => BreathingExercisePage())),
+            ),
+            _buildTechniqueCard(
+              context,
+              '正念冥想',
+              '專注當下，接受情緒的存在',
+              Icons.self_improvement,
+              Colors.purple,
+                  () => _showMindfulnessGuide(context),
+            ),
+            _buildTechniqueCard(
+              context,
+              '情緒日記',
+              '記錄和分析情緒模式',
+              Icons.book,
+              Colors.blue,
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => EmotionTrackerPage())),
+            ),
+            _buildTechniqueCard(
+              context,
+              '運動釋壓',
+              '透過身體活動調節情緒',
+              Icons.fitness_center,
+              Colors.orange,
+                  () => _showExerciseGuide(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTechniqueCard(BuildContext context, String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+    return Card(
+      margin: EdgeInsets.only(bottom: 15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: color,
+                child: Icon(icon, color: Colors.white, size: 30),
+              ),
+              SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, color: Colors.grey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showMindfulnessGuide(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('正念冥想指南'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('正念冥想步驟：', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 10),
+              Text('1. 舒適地坐著或躺著'),
+              Text('2. 閉上眼睛，專注於呼吸'),
+              Text('3. 觀察身體的感覺'),
+              Text('4. 當思緒飄散時，溫和地拉回注意力'),
+              Text('5. 每天練習10-15分鐘'),
+              SizedBox(height: 15),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.purple[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '💡 提示：不要強迫自己不去想東西，而是溫和地接受想法的來去。',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showExerciseGuide(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('運動釋壓指南'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('適合的運動類型：', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 10),
+              Text('• 散步或慢跑'),
+              Text('• 瑜伽或伸展'),
+              Text('• 游泳'),
+              Text('• 重量訓練'),
+              Text('• 舞蹈'),
+              SizedBox(height: 15),
+              Text('運動的好處：', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('• 釋放內啡肽，改善心情'),
+              Text('• 減少壓力荷爾蒙'),
+              Text('• 提升自信心'),
+              Text('• 改善睡眠品質'),
+              SizedBox(height: 15),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '💡 建議：每週至少運動150分鐘，或每天運動30分鐘。',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 呼吸練習頁面
+class BreathingExercisePage extends StatefulWidget {
+  @override
+  _BreathingExercisePageState createState() => _BreathingExercisePageState();
+}
+
+class _BreathingExercisePageState extends State<BreathingExercisePage> with TickerProviderStateMixin {
+  late AnimationController _breathController;
+  late AnimationController _colorController;
+  late Animation<Color?> _colorAnimation;
+  String breathText = "準備開始";
+  String phaseText = "深呼吸放鬆";
+  int seconds = 0;
+  bool isActive = false;
+  Timer? _timer;
+  int currentCycle = 0;
+  final int totalCycles = 5;
+
+  @override
+  void initState() {
+    super.initState();
+    _breathController = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: 4),
+    );
+    _colorController = AnimationController(
+      vsync: this,
+      duration: Duration(seconds: 8),
+    )..repeat(reverse: true);
+
+    _colorAnimation = ColorTween(
+      begin: Colors.teal[300],
+      end: Colors.blue[300],
+    ).animate(_colorController);
+  }
+
+  @override
+  void dispose() {
+    _breathController.dispose();
+    _colorController.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startBreathing() {
+    setState(() {
+      isActive = true;
+      seconds = 0;
+      currentCycle = 0;
+    });
+
+    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        seconds++;
+      });
+    });
+
+    _breathCycle();
+  }
+
+  void _breathCycle() async {
+    if (!isActive || currentCycle >= totalCycles) {
+      setState(() {
+        isActive = false;
+        breathText = "練習完成！";
+        phaseText = "感覺如何？";
+      });
+      _timer?.cancel();
+      return;
+    }
+
+    setState(() {
+      breathText = "吸氣";
+      phaseText = "慢慢吸氣，感受空氣進入";
+    });
+    _breathController.forward(from: 0);
+    await Future.delayed(Duration(seconds: 4));
+
+    if (!isActive) return;
+
+    setState(() {
+      breathText = "憋氣";
+      phaseText = "保持呼吸，讓身體放鬆";
+    });
+    await Future.delayed(Duration(seconds: 4));
+
+    if (!isActive) return;
+
+    setState(() {
+      breathText = "吐氣";
+      phaseText = "慢慢吐氣，釋放壓力";
+    });
+    _breathController.reverse();
+    await Future.delayed(Duration(seconds: 6));
+
+    if (!isActive) return;
+
+    setState(() {
+      currentCycle++;
+    });
+
+    _breathCycle();
+  }
+
+  void _stopBreathing() {
+    setState(() {
+      isActive = false;
+      breathText = "準備開始";
+      phaseText = "深呼吸放鬆";
+      currentCycle = 0;
+    });
+    _timer?.cancel();
+    _breathController.reset();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.teal[50],
+      appBar: AppBar(
+        title: Text('深呼吸練習'),
+        backgroundColor: Colors.teal[600],
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(30),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 20),
+              Text(
+                '第 ${currentCycle + 1} / $totalCycles 輪',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 40),
+              AnimatedBuilder(
+                animation: Listenable.merge([_breathController, _colorAnimation]),
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: 0.5 + _breathController.value * 0.8,
+                    child: Container(
+                      width: 200,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        color: _colorAnimation.value,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: _colorAnimation.value!.withOpacity(0.5),
+                            blurRadius: 20,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          breathText,
+                          style: TextStyle(
+                            fontSize: 24,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              SizedBox(height: 40),
+              Text(
+                phaseText,
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 40),
+              LinearProgressIndicator(
+                value: currentCycle / totalCycles,
+                backgroundColor: Colors.grey[300],
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.teal[400]!),
+              ),
+              SizedBox(height: 40),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: isActive ? null : _startBreathing,
+                    icon: Icon(Icons.play_arrow),
+                    label: Text('開始'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                    ),
+                  ),
+                  SizedBox(width: 20),
+                  ElevatedButton.icon(
+                    onPressed: isActive ? _stopBreathing : null,
+                    icon: Icon(Icons.stop),
+                    label: Text('停止'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[400],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// 情緒追蹤頁面
+class EmotionTrackerPage extends StatefulWidget {
+  @override
+  _EmotionTrackerPageState createState() => _EmotionTrackerPageState();
+}
+
+class _EmotionTrackerPageState extends State<EmotionTrackerPage> {
+  double moodLevel = 5;
+  TextEditingController noteController = TextEditingController();
+  List<String> selectedEmotions = [];
+  bool isLoading = false;
+
+  final List<Map<String, String>> emotions = [
+    {'key': 'happy', 'emoji': '😊', 'label': '開心'},
+    {'key': 'anxious', 'emoji': '😰', 'label': '焦慮'},
+    {'key': 'angry', 'emoji': '😠', 'label': '憤怒'},
+    {'key': 'sad', 'emoji': '😢', 'label': '悲傷'},
+    {'key': 'calm', 'emoji': '😌', 'label': '平靜'},
+    {'key': 'tired', 'emoji': '😴', 'label': '疲憊'},
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('情緒追蹤器'),
+        backgroundColor: Colors.blue[600],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '記錄您今天的情緒狀態：',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 30),
+
+            // 情緒等級滑桿
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('整體情緒（1-10分）：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                    SizedBox(height: 15),
+                    Slider(
+                      value: moodLevel,
+                      min: 1,
+                      max: 10,
+                      divisions: 9,
+                      label: moodLevel.round().toString(),
+                      onChanged: (value) {
+                        setState(() {
+                          moodLevel = value;
+                        });
+                      },
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('很差', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text('一般', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        Text('很好', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: 20),
+
+            // 主要情緒選擇
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('主要情緒：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                    SizedBox(height: 15),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: emotions.map((emotion) {
+                        bool isSelected = selectedEmotions.contains(emotion['key']);
+                        return FilterChip(
+                          label: Text('${emotion['emoji']} ${emotion['label']}'),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setState(() {
+                              if (selected) {
+                                selectedEmotions.add(emotion['key']!);
+                              } else {
+                                selectedEmotions.remove(emotion['key']);
+                              }
+                            });
+                          },
+                          selectedColor: Colors.blue[100],
+                          checkmarkColor: Colors.blue[600],
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: 20),
+
+            // 備註輸入
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('今天發生了什麼？', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                    SizedBox(height: 15),
+                    TextField(
+                      controller: noteController,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        hintText: '簡單描述今天的經歷或感受...',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: 30),
+
+            // 儲存按鈕
+            ElevatedButton(
+              onPressed: isLoading ? null : _saveEmotionData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+                minimumSize: Size(double.infinity, 50),
+              ),
+              child: isLoading
+                  ? CircularProgressIndicator(color: Colors.white)
+                  : Text('儲存記錄', style: TextStyle(fontSize: 16)),
+            ),
+
+            SizedBox(height: 20),
+
+            // 歷史記錄提示
+            Container(
+              padding: EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lightbulb_outline, color: Colors.blue[600]),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '建議每天記錄情緒，有助於了解自己的情緒模式。',
+                      style: TextStyle(fontSize: 12, color: Colors.blue[800]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveEmotionData() async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('請先登入才能儲存記錄')),
+      );
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      String today = DateTime.now().toIso8601String().split('T')[0];
+
+      await FirebaseFirestore.instance.collection('emotion_records').add({
+        'userId': userId,
+        'moodLevel': moodLevel.round(),
+        'emotions': selectedEmotions,
+        'note': noteController.text.trim(),
+        'date': today,
+        'recordedAt': FieldValue.serverTimestamp(),
+      });
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('記錄已儲存'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('您今天的情緒記錄已成功儲存！'),
+              SizedBox(height: 15),
+              Container(
+                padding: EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('情緒分數：${moodLevel.round()}/10', style: TextStyle(fontWeight: FontWeight.bold)),
+                    if (selectedEmotions.isNotEmpty)
+                      Text('主要情緒：${selectedEmotions.map((e) => emotions.firstWhere((emotion) => emotion['key'] == e)['label']).join(', ')}'),
+                    if (noteController.text.trim().isNotEmpty)
+                      Text('備註：${noteController.text.trim()}'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context);
+              },
+              child: Text('完成'),
+            ),
+          ],
+        ),
+      );
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('儲存失敗：$e')),
+      );
+    }
+
+    setState(() {
+      isLoading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    noteController.dispose();
+    super.dispose();
+  }
+}
+
+// 睡眠健康頁面
+class SleepHealthPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.purple[50],
+      appBar: AppBar(
+        title: Text('睡眠健康'),
+        backgroundColor: Colors.purple[600],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          children: [
+            _buildInfoCard(
+              '良好睡眠的重要性',
+              '充足的睡眠對身心健康至關重要，有助於情緒穩定、記憶力提升和免疫系統強化。',
+              Icons.info_outline,
+              Colors.blue,
+            ),
+            _buildHabitsCard(),
+            _buildTipsCard(),
+            _buildAvoidCard(),
+            SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SleepAssessmentPage())),
+                    icon: Icon(Icons.quiz),
+                    label: Text('睡眠評估'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showSleepPlan(context),
+                    icon: Icon(Icons.schedule),
+                    label: Text('制定計劃'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(String title, String content, IconData icon, Color color) {
+    return Card(
+      margin: EdgeInsets.only(bottom: 15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: color,
+                  child: Icon(icon, color: Colors.white),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 15),
+            Text(content, style: TextStyle(fontSize: 16, height: 1.5)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHabitsCard() {
+    final habits = [
+      '每天同一時間上床睡覺和起床',
+      '創造舒適的睡眠環境',
+      '避免睡前使用電子設備',
+      '保持臥室涼爽、黑暗、安靜',
+      '選擇舒適的枕頭和床墊',
+    ];
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.green,
+                  child: Icon(Icons.bedtime, color: Colors.white),
+                ),
+                SizedBox(width: 15),
+                Text(
+                  '睡眠衛生習慣',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                ),
+              ],
+            ),
+            SizedBox(height: 15),
+            ...habits.map((habit) => Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('✓ ', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                  Expanded(child: Text(habit, style: TextStyle(fontSize: 14, height: 1.4))),
+                ],
+              ),
+            )).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTipsCard() {
+    final tips = [
+      '溫水泡澡或淋浴',
+      '閱讀輕鬆的書籍',
+      '聽輕柔的音樂',
+      '練習深呼吸或冥想',
+      '寫日記或感恩清單',
+      '喝無咖啡因的草本茶',
+    ];
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Icon(Icons.spa, color: Colors.white),
+                ),
+                SizedBox(width: 15),
+                Text(
+                  '睡前放鬆技巧',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orange),
+                ),
+              ],
+            ),
+            SizedBox(height: 15),
+            ...tips.map((tip) => Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('• ', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                  Expanded(child: Text(tip, style: TextStyle(fontSize: 14, height: 1.4))),
+                ],
+              ),
+            )).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvoidCard() {
+    final avoids = [
+      '睡前2小時內避免大量進食',
+      '避免咖啡因和酒精',
+      '不要在床上工作或看電視',
+      '避免激烈運動',
+      '不要長時間午睡',
+    ];
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.red,
+                  child: Icon(Icons.block, color: Colors.white),
+                ),
+                SizedBox(width: 15),
+                Text(
+                  '避免的事項',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red),
+                ),
+              ],
+            ),
+            SizedBox(height: 15),
+            ...avoids.map((avoid) => Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('✗ ', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                  Expanded(child: Text(avoid, style: TextStyle(fontSize: 14, height: 1.4))),
+                ],
+              ),
+            )).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSleepPlan(BuildContext context) {
+    final tips = [
+      "設定固定的睡眠時間，每天同時上床和起床",
+      "睡前1小時避免使用電子設備",
+      "創造舒適的睡眠環境：涼爽、黑暗、安靜",
+      "睡前進行放鬆活動：閱讀、冥想、深呼吸",
+      "避免睡前大量飲食和咖啡因",
+      "白天保持適度的運動習慣",
+      "如果無法入睡，起床做安靜的活動直到有睡意"
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('個人化睡眠改善計劃'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('建議從以下方面改善：'),
+              SizedBox(height: 15),
+              ...tips.take(4).map((tip) => Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: Colors.purple[600],
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${tips.indexOf(tip) + 1}',
+                          style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(child: Text(tip, style: TextStyle(fontSize: 14, height: 1.4))),
+                  ],
+                ),
+              )).toList(),
+              SizedBox(height: 15),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.purple[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '💡 建議選擇1-2項開始實踐，逐步養成習慣後再增加其他項目。',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('稍後再說'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('開始您的7天睡眠改善挑戰！')),
+              );
+            },
+            child: Text('開始7天挑戰'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 睡眠評估頁面
+class SleepAssessmentPage extends StatefulWidget {
+  @override
+  _SleepAssessmentPageState createState() => _SleepAssessmentPageState();
+}
+
+class _SleepAssessmentPageState extends State<SleepAssessmentPage> {
+  int bedtime = 2;
+  int sleepTime = 2;
+  int duration = 2;
+  int feeling = 2;
+
+  final List<String> bedtimeOptions = [
+    '21:00 之前',
+    '21:00 - 22:00',
+    '22:00 - 23:00',
+    '23:00 - 24:00',
+    '24:00 之後'
+  ];
+
+  final List<String> sleepTimeOptions = [
+    '超過60分鐘',
+    '30-60分鐘',
+    '15-30分鐘',
+    '5-15分鐘',
+    '5分鐘內'
+  ];
+
+  final List<String> durationOptions = [
+    '少於5小時',
+    '5-6小時',
+    '6-7小時',
+    '7-8小時',
+    '8小時以上'
+  ];
+
+  final List<String> feelingOptions = [
+    '非常疲倦',
+    '比較疲倦',
+    '一般',
+    '比較清醒',
+    '非常清醒有精神'
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('睡眠品質評估'),
+        backgroundColor: Colors.purple[600],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '請根據最近一週的睡眠情況回答：',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 30),
+
+            _buildQuestionCard(
+              '您通常幾點上床睡覺？',
+              bedtimeOptions,
+              bedtime,
+                  (value) => setState(() => bedtime = value),
+            ),
+
+            _buildQuestionCard(
+              '您需要多長時間才能入睡？',
+              sleepTimeOptions,
+              sleepTime,
+                  (value) => setState(() => sleepTime = value),
+            ),
+
+            _buildQuestionCard(
+              '您的睡眠總時長？',
+              durationOptions,
+              duration,
+                  (value) => setState(() => duration = value),
+            ),
+
+            _buildQuestionCard(
+              '早上醒來時的感覺？',
+              feelingOptions,
+              feeling,
+                  (value) => setState(() => feeling = value),
+            ),
+
+            SizedBox(height: 30),
+
+            ElevatedButton(
+              onPressed: _calculateResult,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple[600],
+                foregroundColor: Colors.white,
+                minimumSize: Size(double.infinity, 50),
+              ),
+              child: Text('查看結果', style: TextStyle(fontSize: 16)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuestionCard(String question, List<String> options, int selectedValue, Function(int) onChanged) {
+    return Card(
+      margin: EdgeInsets.only(bottom: 20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              question,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 15),
+            ...options.asMap().entries.map((entry) {
+              int index = entry.key;
+              String option = entry.value;
+              return RadioListTile<int>(
+                title: Text(option),
+                value: index,
+                groupValue: selectedValue,
+                onChanged: (value) => onChanged(value!),
+                activeColor: Colors.purple[600],
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _calculateResult() {
+    int totalScore = bedtime + sleepTime + duration + feeling;
+
+    String result = "";
+    String recommendation = "";
+    Color color = Colors.green;
+
+    if (totalScore >= 14) {
+      result = "睡眠品質優秀";
+      recommendation = "您的睡眠品質很好，請繼續保持良好的睡眠習慣。";
+      color = Colors.green;
+    } else if (totalScore >= 10) {
+      result = "睡眠品質良好";
+      recommendation = "您的睡眠品質尚可，可以嘗試一些小改善來提升品質。";
+      color = Colors.orange;
+    } else {
+      result = "睡眠品質需要改善";
+      recommendation = "建議調整睡眠習慣，如有需要可諮詢專業人士。";
+      color = Colors.red;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('睡眠品質評估結果'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  Text('$totalScore/16', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: color)),
+                  SizedBox(height: 10),
+                  Text(result, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+                ],
+              ),
+            ),
+            SizedBox(height: 15),
+            Text(recommendation, style: TextStyle(fontSize: 14, height: 1.4)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+          if (totalScore < 14)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context);
+                // 可以導航到睡眠改善計劃
+              },
+              child: Text('制定改善計劃'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// 人際關係頁面
+class RelationshipPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.orange[50],
+      appBar: AppBar(
+        title: Text('人際關係'),
+        backgroundColor: Colors.orange[600],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          children: [
+            _buildSkillCard(
+              context,
+              '有效溝通技巧',
+              '學習如何更好地表達和傾聽',
+              Icons.chat,
+              Colors.blue,
+                  () => _showCommunicationSkills(context),
+            ),
+            _buildSkillCard(
+              context,
+              '建立信任關係',
+              '培養深層的人際連結',
+              Icons.handshake,
+              Colors.green,
+                  () => _showTrustBuilding(context),
+            ),
+            _buildSkillCard(
+              context,
+              '處理衝突',
+              '學會健康地解決人際問題',
+              Icons.psychology,
+              Colors.purple,
+                  () => _showConflictResolution(context),
+            ),
+            _buildSkillCard(
+              context,
+              '設定健康界限',
+              '保護個人空間和價值觀',
+              Icons.shield,
+              Colors.red,
+                  () => _showBoundariesGuide(context),
+            ),
+            SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CommunicationPracticePage())),
+                    icon: Icon(Icons.school),
+                    label: Text('溝通練習'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showRelationshipGoals(context),
+                    icon: Icon(Icons.flag),
+                    label: Text('設定目標'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.brown[600],
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkillCard(BuildContext context, String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+    return Card(
+      margin: EdgeInsets.only(bottom: 15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(15),
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: color,
+                child: Icon(icon, color: Colors.white, size: 30),
+              ),
+              SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, color: Colors.grey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCommunicationSkills(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('有效溝通技巧'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('✓ 主動傾聽，不打斷對方'),
+              SizedBox(height: 8),
+              Text('✓ 用"我"的語句表達感受'),
+              SizedBox(height: 8),
+              Text('✓ 避免批評和指責'),
+              SizedBox(height: 8),
+              Text('✓ 表達感謝和讚美'),
+              SizedBox(height: 8),
+              Text('✓ 學會道歉和原諒'),
+              SizedBox(height: 8),
+              Text('✓ 保持開放和誠實'),
+              SizedBox(height: 15),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '💡 關鍵技巧：使用「我」語句表達感受，避免指責，保持開放態度。',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTrustBuilding(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('建立信任關係'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('✓ 言行一致，做到承諾'),
+              SizedBox(height: 8),
+              Text('✓ 分享個人想法和感受'),
+              SizedBox(height: 8),
+              Text('✓ 尊重他人的界限'),
+              SizedBox(height: 8),
+              Text('✓ 保守秘密，值得信賴'),
+              SizedBox(height: 8),
+              Text('✓ 給予支持和鼓勵'),
+              SizedBox(height: 8),
+              Text('✓ 在困難時期陪伴左右'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConflictResolution(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('處理衝突'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('✓ 冷靜下來，避免情緒化反應'),
+              SizedBox(height: 8),
+              Text('✓ 傾聽對方的觀點'),
+              SizedBox(height: 8),
+              Text('✓ 尋找共同點和解決方案'),
+              SizedBox(height: 8),
+              Text('✓ 專注於問題，不攻擊人格'),
+              SizedBox(height: 8),
+              Text('✓ 願意妥協和讓步'),
+              SizedBox(height: 8),
+              Text('✓ 必要時尋求第三方協助'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBoundariesGuide(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('設定健康界限'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('✓ 清楚表達自己的需求'),
+              SizedBox(height: 8),
+              Text('✓ 學會說"不"而不感到罪惡'),
+              SizedBox(height: 8),
+              Text('✓ 保護個人時間和空間'),
+              SizedBox(height: 8),
+              Text('✓ 避免過度承擔他人問題'),
+              SizedBox(height: 8),
+              Text('✓ 尊重自己和他人的價值觀'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRelationshipGoals(BuildContext context) {
+    final goals = [
+      "每天至少進行一次有意義的對話",
+      "練習主動傾聽，不打斷對方",
+      "學會表達感謝和讚美",
+      "設定健康的個人界限",
+      "學會處理衝突而非逃避",
+      "培養同理心，理解他人感受"
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('人際關係改善目標'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('選擇您想要改善的人際關係方面：'),
+              SizedBox(height: 15),
+              ...goals.map((goal) => Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text('• $goal', style: TextStyle(fontSize: 14)),
+              )).toList(),
+              SizedBox(height: 15),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '💡 建議每週檢視一次進展，小步驟的持續改善比一次性的大改變更有效。',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('開始實踐人際關係改善目標！')),
+              );
+            },
+            child: Text('開始實踐'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// 溝通練習頁面
+class CommunicationPracticePage extends StatefulWidget {
+  @override
+  _CommunicationPracticePageState createState() => _CommunicationPracticePageState();
+}
+
+class _CommunicationPracticePageState extends State<CommunicationPracticePage> {
+  int currentScenarioIndex = 0;
+
+  final List<Map<String, String>> scenarios = [
+    {
+      'title': '表達不同意見',
+      'situation': '您不同意朋友的某個決定，想要表達自己的想法。',
+      'goodResponse': '「我理解你的想法，不過我有不同的看法。我覺得...你覺得呢？」',
+      'badResponse': '「你這個想法完全不對，應該要...」'
+    },
+    {
+      'title': '請求幫助',
+      'situation': '您在工作上遇到困難，需要向同事請求協助。',
+      'goodResponse': '「我在處理這個項目時遇到了一些困難，能否請你幫我看看？」',
+      'badResponse': '「這個太難了，你幫我做吧。」'
+    },
+    {
+      'title': '給予回饋',
+      'situation': '您的朋友做了一件讓您不太舒服的事情。',
+      'goodResponse': '「我想和你分享一下我的感受，當...的時候，我感到...」',
+      'badResponse': '「你總是這樣做，真的很煩人。」'
+    }
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scenario = scenarios[currentScenarioIndex];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('溝通技巧練習'),
+        backgroundColor: Colors.orange[600],
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '情境練習 ${currentScenarioIndex + 1}/${scenarios.length}',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 20),
+
+            // 情境描述
+            Card(
+              color: Colors.blue[50],
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '情境：${scenario['title']}',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[800]),
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      scenario['situation']!,
+                      style: TextStyle(fontSize: 16, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: 20),
+
+            // 建議的表達方式
+            Card(
+              color: Colors.green[50],
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green[600]),
+                        SizedBox(width: 8),
+                        Text(
+                          '建議的表達方式',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      scenario['goodResponse']!,
+                      style: TextStyle(fontSize: 16, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: 15),
+
+            // 避免的表達方式
+            Card(
+              color: Colors.red[50],
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.cancel, color: Colors.red[600]),
+                        SizedBox(width: 8),
+                        Text(
+                          '避免的表達方式',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red[800]),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      scenario['badResponse']!,
+                      style: TextStyle(fontSize: 16, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: 20),
+
+            // 關鍵提示
+            Container(
+              padding: EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: Colors.amber[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber[300]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lightbulb_outline, color: Colors.amber[800]),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '關鍵技巧：使用「我」語句表達感受，避免指責，保持開放態度。',
+                      style: TextStyle(fontSize: 12, color: Colors.amber[800]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 30),
+
+            // 按鈕區域
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: currentScenarioIndex > 0 ? () {
+                      setState(() {
+                        currentScenarioIndex--;
+                      });
+                    } : null,
+                    child: Text('上一個'),
+                  ),
+                ),
+                SizedBox(width: 15),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      if (currentScenarioIndex < scenarios.length - 1) {
+                        setState(() {
+                          currentScenarioIndex++;
+                        });
+                      } else {
+                        // 重新開始
+                        setState(() {
+                          currentScenarioIndex = 0;
+                        });
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange[600],
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(currentScenarioIndex < scenarios.length - 1 ? '下一個' : '重新開始'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
