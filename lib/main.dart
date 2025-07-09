@@ -7073,7 +7073,7 @@ class RelationshipPage extends StatelessWidget {
 // 2. OpenAI API 服務類
 class OpenAIService {
   static const String _baseUrl = 'https://api.openai.com/v1/chat/completions';
-  static const String _apiKey = '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'; // 請替換為您的API密鑰
+  static const String _apiKey = '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'; // 請替換為您的API密鑰
 
   // 發送消息到ChatGPT
   static Future<String> sendMessage(String message, List<Map<String, String>> conversationHistory) async {

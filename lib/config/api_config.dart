@@ -1,5 +1,5 @@
 class ApiConfig {
-  static const String _openAiApiKey = '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';
+  static const String _openAiApiKey = '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';
 
   // 使用限制設定
   static const int maxDailyMessages = 50;
@@ -21,7 +21,7 @@ class ApiConfig {
   // API 設定
   static const String openAiBaseUrl = 'https://api.openai.com/v1/chat/completions';
   static const String openAiModel = 'gpt-3.5-turbo';
-  static const int maxTokens = 500;
+  static const int maxTokens = 100;
   static const double temperature = 0.7;
 
   // 驗證密鑰格式
