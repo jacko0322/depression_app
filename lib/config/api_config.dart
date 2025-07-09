@@ -2,8 +2,8 @@ class ApiConfig {
   static const String _openAiApiKey = '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';
 
   // 使用限制設定
-  static const int maxDailyMessages = 50;
-  static const int maxTokensPerMessage = 500;
+  static const int maxDailyMessages = 30;
+  static const int maxTokensPerMessage = 180;
 
   // 獲取 API 密鑰
   static String getOpenAiApiKey() {
@@ -21,8 +21,10 @@ class ApiConfig {
   // API 設定
   static const String openAiBaseUrl = 'https://api.openai.com/v1/chat/completions';
   static const String openAiModel = 'gpt-3.5-turbo';
-  static const int maxTokens = 100;
-  static const double temperature = 0.7;
+  static const double temperature = 0.6;
+
+  // 🔧 添加這個！讓 maxTokens 引用 maxTokensPerMessage
+  static int get maxTokens => maxTokensPerMessage;
 
   // 驗證密鑰格式
   static bool get isValidApiKeyFormat {
@@ -36,6 +38,7 @@ class ApiConfig {
       'keyFormatValid': isValidApiKeyFormat,
       'keyPrefix': _openAiApiKey.length > 10 ? _openAiApiKey.substring(0, 10) + '...' : 'invalid',
       'maxDailyMessages': maxDailyMessages,
+      'maxTokensPerMessage': maxTokensPerMessage,  // 🔧 也添加這個到狀態中
     };
   }
 }
