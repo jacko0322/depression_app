@@ -1604,9 +1604,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     }
   }
 
-  // 忘記密碼功能
+  // 完整修復的忘記密碼功能
   void _showForgotPasswordDialog() {
-    final TextEditingController resetEmailController = TextEditingController();
+    String email = '';
 
     showDialog(
       context: context,
@@ -1625,7 +1625,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             Text('請輸入您的電子郵件地址，我們會發送重設密碼的連結給您。'),
             SizedBox(height: 16),
             TextField(
-              controller: resetEmailController,
+              onChanged: (value) => email = value,
               decoration: InputDecoration(
                 labelText: '電子郵件',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -1637,27 +1637,34 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              resetEmailController.dispose();
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context),
             child: Text('取消'),
           ),
           ElevatedButton(
             onPressed: () async {
-              String email = resetEmailController.text.trim();
-              if (email.isEmpty) {
-                _showErrorMessage('請輸入電子郵件地址');
+              if (email.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('請輸入電子郵件地址')),
+                );
                 return;
               }
 
               try {
-                await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                resetEmailController.dispose();
+                await FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
                 Navigator.pop(context);
-                _showSuccessMessage('重設密碼郵件已發送！請檢查您的信箱。');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('重設密碼郵件已發送！請檢查您的信箱。'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
               } catch (e) {
-                _showErrorMessage('發送重設郵件失敗：${_getErrorMessage(e.toString())}');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('發送失敗，請稍後再試'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(
@@ -1670,8 +1677,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       ),
     );
   }
-
-  // 訊息顯示方法
   void _showSuccessMessage(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1691,6 +1696,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     }
   }
 
+
+  // 更安全的錯誤訊息顯示方法
   void _showErrorMessage(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1710,7 +1717,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       );
     }
   }
-
   // 錯誤訊息轉換
   String _getErrorMessage(String error) {
     if (error.contains('user-not-found')) return '找不到此用戶，請檢查電子郵件是否正確';
@@ -3920,6 +3926,7 @@ class CommentCard extends StatelessWidget {
 
 // 以下是原有的其他頁面，保持不變
 // 整合的成長頁面（合併每日任務、角色培養、澆水任務）
+// 修復後的整合成長頁面（根據累積進度改變成長狀態）
 class IntegratedGrowthPage extends StatefulWidget {
   @override
   _IntegratedGrowthPageState createState() => _IntegratedGrowthPageState();
@@ -3929,9 +3936,20 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
   late AnimationController _celebrationController;
   late Animation<double> _scaleAnimation;
 
+  // 添加生命週期控制
+  bool _isDisposed = false;
+  StreamSubscription<QuerySnapshot>? _taskSubscription;
+  StreamSubscription<DocumentSnapshot>? _progressSubscription;
+  StreamSubscription<DocumentSnapshot>? _petSubscription;
+
   @override
   void initState() {
     super.initState();
+    _initializeAnimations();
+    _initializeUserProgress();
+  }
+
+  void _initializeAnimations() {
     _celebrationController = AnimationController(
       duration: Duration(milliseconds: 800),
       vsync: this,
@@ -3943,75 +3961,279 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
 
   @override
   void dispose() {
+    _isDisposed = true;
+
+    // 取消所有訂閱
+    _taskSubscription?.cancel();
+    _progressSubscription?.cancel();
+    _petSubscription?.cancel();
+
+    // 停止並銷毀動畫控制器
+    if (_celebrationController.isAnimating) {
+      _celebrationController.stop();
+    }
     _celebrationController.dispose();
+
     super.dispose();
+  }
+
+  // 安全的 setState 方法
+  void _safeSetState(VoidCallback fn) {
+    if (mounted && !_isDisposed) {
+      setState(fn);
+    }
+  }
+
+  // 初始化用戶進度
+  Future<void> _initializeUserProgress() async {
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || _isDisposed) return;
+
+    try {
+      DocumentSnapshot progressDoc = await FirebaseFirestore.instance
+          .collection('user_progress')
+          .doc(userId)
+          .get();
+
+      if (!progressDoc.exists && !_isDisposed) {
+        await FirebaseFirestore.instance
+            .collection('user_progress')
+            .doc(userId)
+            .set({
+          'totalTasksCompleted': 0,
+          'totalExperience': 0,
+          'currentLevel': 1,
+          'consecutiveDays': 0,
+          'lastActiveDate': null,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        print('用戶進度初始化完成');
+      }
+    } catch (e) {
+      print('初始化用戶進度失敗: $e');
+    }
   }
 
   Future<void> _completeTask(String taskTitle) async {
     String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
+    if (userId == null || _isDisposed) return;
 
     String today = DateTime.now().toIso8601String().split('T')[0];
     String docId = '${userId}_${today}_${taskTitle.replaceAll(' ', '_')}';
 
-    // 更新每日任務完成狀態
-    await FirebaseFirestore.instance.collection('daily_tasks').doc(docId).set({
-      'userId': userId,
-      'taskTitle': taskTitle,
-      'isCompleted': true,
-      'date': today,
-      'completedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      // 檢查任務是否已完成
+      DocumentSnapshot taskDoc = await FirebaseFirestore.instance
+          .collection('daily_tasks')
+          .doc(docId)
+          .get();
 
-    // 更新寵物狀態
-    await _updatePetStatus(userId);
+      if (taskDoc.exists && (taskDoc.data() as Map<String, dynamic>)['isCompleted'] == true) {
+        if (!_isDisposed && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('今日此任務已完成！')),
+          );
+        }
+        return;
+      }
 
-    // 播放慶祝動畫
-    _celebrationController.forward().then((_) {
-      _celebrationController.reverse();
-    });
+      // 更新每日任務完成狀態
+      await FirebaseFirestore.instance.collection('daily_tasks').doc(docId).set({
+        'userId': userId,
+        'taskTitle': taskTitle,
+        'isCompleted': true,
+        'date': today,
+        'completedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-    // 顯示完成提示
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('任務完成！🎉 寵物和樹都成長了！（經驗值+5，快樂值+3）'),
-        backgroundColor: Colors.green,
-      ),
-    );
+      // 更新總體進度
+      await _updateUserProgress(userId);
+
+      // 更新寵物狀態
+      await _updatePetStatus(userId);
+
+      // 播放慶祝動畫 - 檢查組件是否仍然存在
+      if (!_isDisposed && mounted && _celebrationController.isCompleted == false) {
+        _celebrationController.forward().then((_) {
+          if (!_isDisposed && mounted) {
+            _celebrationController.reverse();
+          }
+        });
+      }
+
+      // 顯示完成提示
+      if (!_isDisposed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('任務完成！🎉 獲得經驗值+10，寵物快樂值+5！'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('完成任務失敗: $e');
+      if (!_isDisposed && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('完成任務失敗，請重試'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 更新用戶總體進度
+  Future<void> _updateUserProgress(String userId) async {
+    if (_isDisposed) return;
+
+    try {
+      DocumentReference progressRef = FirebaseFirestore.instance
+          .collection('user_progress')
+          .doc(userId);
+
+      DocumentSnapshot progressDoc = await progressRef.get();
+      Map<String, dynamic> progressData = progressDoc.exists
+          ? progressDoc.data() as Map<String, dynamic>
+          : {};
+
+      int currentTotal = progressData['totalTasksCompleted'] ?? 0;
+      int currentExp = progressData['totalExperience'] ?? 0;
+      int currentLevel = progressData['currentLevel'] ?? 1;
+
+      String today = DateTime.now().toIso8601String().split('T')[0];
+      String? lastActiveDate = progressData['lastActiveDate'];
+      int consecutiveDays = progressData['consecutiveDays'] ?? 0;
+
+      // 計算連續天數
+      if (lastActiveDate != today) {
+        if (lastActiveDate != null) {
+          DateTime lastDate = DateTime.parse(lastActiveDate);
+          DateTime currentDate = DateTime.parse(today);
+          int daysDiff = currentDate.difference(lastDate).inDays;
+
+          if (daysDiff == 1) {
+            consecutiveDays += 1;
+          } else if (daysDiff > 1) {
+            consecutiveDays = 1;
+          }
+        } else {
+          consecutiveDays = 1;
+        }
+      }
+
+      // 更新經驗值和等級
+      int newTotal = currentTotal + 1;
+      int newExp = currentExp + 10;
+      int newLevel = _calculateLevel(newExp);
+
+      if (!_isDisposed) {
+        await progressRef.set({
+          'totalTasksCompleted': newTotal,
+          'totalExperience': newExp,
+          'currentLevel': newLevel,
+          'consecutiveDays': consecutiveDays,
+          'lastActiveDate': today,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        print('用戶進度更新成功: 總任務$newTotal, 經驗值$newExp, 等級$newLevel');
+      }
+    } catch (e) {
+      print('更新用戶進度失敗: $e');
+    }
+  }
+
+  // 根據經驗值計算等級
+  int _calculateLevel(int experience) {
+    if (experience < 50) return 1;
+    if (experience < 150) return 2;
+    if (experience < 300) return 3;
+    if (experience < 500) return 4;
+    if (experience < 750) return 5;
+    if (experience < 1000) return 6;
+    return 7 + (experience - 1000) ~/ 200;
+  }
+
+  // 根據總體進度獲取樹的成長階段
+  String _getTreeStage(int totalTasks, int level) {
+    if (totalTasks == 0) return '🌰';
+    if (totalTasks < 5) return '🌱';
+    if (totalTasks < 15) return '🌿';
+    if (totalTasks < 30) return '🌳';
+    if (totalTasks < 50) return '🌲';
+    if (totalTasks < 80) return '🌳🌸';
+    return '🌳🍎';
+  }
+
+  // 根據總體進度獲取背景顏色
+  Color _getBackgroundColor(int totalTasks) {
+    if (totalTasks == 0) return Colors.brown.shade50;
+    if (totalTasks < 5) return Colors.green.shade50;
+    if (totalTasks < 15) return Colors.green.shade100;
+    if (totalTasks < 30) return Colors.green.shade200;
+    if (totalTasks < 50) return Colors.green.shade300;
+    if (totalTasks < 80) return Colors.pink.shade100;
+    return Colors.orange.shade100;
+  }
+
+  // 獲取成長階段描述
+  String _getGrowthDescription(int totalTasks) {
+    if (totalTasks == 0) return '種下你的第一顆種子';
+    if (totalTasks < 5) return '嫩芽正在茁壯成長';
+    if (totalTasks < 15) return '小苗越長越高';
+    if (totalTasks < 30) return '已經是一棵小樹了';
+    if (totalTasks < 50) return '成為了茂密的大樹';
+    if (totalTasks < 80) return '美麗的花朵正在綻放';
+    return '結出了豐碩的果實';
   }
 
   Future<void> _updatePetStatus(String userId) async {
-    DocumentSnapshot petDoc = await FirebaseFirestore.instance.collection('pets').doc(userId).get();
+    if (_isDisposed) return;
 
-    Map<String, dynamic> petData = {};
-    if (petDoc.exists) {
-      petData = petDoc.data() as Map<String, dynamic>;
+    try {
+      DocumentSnapshot petDoc = await FirebaseFirestore.instance
+          .collection('pets')
+          .doc(userId)
+          .get();
+
+      Map<String, dynamic> petData = {};
+      if (petDoc.exists) {
+        petData = petDoc.data() as Map<String, dynamic>;
+      }
+
+      int currentExp = petData['experience'] ?? 0;
+      int currentHappiness = petData['happiness'] ?? 50;
+      int currentLevel = petData['level'] ?? 1;
+
+      int newExp = currentExp + 5;
+      int newHappiness = (currentHappiness + 5).clamp(0, 100);
+      int newLevel = currentLevel;
+
+      // 寵物升級邏輯
+      if (newExp >= 100) {
+        newLevel += 1;
+        newExp = 0;
+      }
+
+      if (!_isDisposed) {
+        await FirebaseFirestore.instance.collection('pets').doc(userId).set({
+          'name': petData['name'] ?? '小花',
+          'level': newLevel,
+          'experience': newExp,
+          'happiness': newHappiness,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      print('更新寵物狀態失敗: $e');
     }
-
-    int currentExp = petData['experience'] ?? 0;
-    int currentHappiness = petData['happiness'] ?? 50;
-    int currentLevel = petData['level'] ?? 1;
-
-    int newExp = currentExp + 5;
-    int newHappiness = (currentHappiness + 3).clamp(0, 100);
-    int newLevel = currentLevel;
-
-    // 升級邏輯
-    if (newExp >= 100) {
-      newLevel += 1;
-      newExp = 0;
-    }
-
-    await FirebaseFirestore.instance.collection('pets').doc(userId).set({
-      'name': petData['name'] ?? '小花',
-      'level': newLevel,
-      'experience': newExp,
-      'happiness': newHappiness,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
   }
 
   void _openTaskDetail(String taskTitle) {
+    if (_isDisposed) return;
+
     Widget taskWidget;
 
     switch (taskTitle) {
@@ -4031,22 +4253,11 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
         return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => taskWidget),
-    );
-  }
-
-  String _getTreeStage(int completedTasks) {
-    if (completedTasks == 0) return '🌰';
-    if (completedTasks == 1) return '🌱';
-    if (completedTasks == 2) return '🌿';
-    if (completedTasks == 3) return '🌳';
-    return '🌲';
-  }
-
-  Color _getBackgroundColor(int completedTasks) {
-    double progress = completedTasks / 4.0;
-    return Color.lerp(Colors.brown.shade50, Colors.green.shade50, progress)!;
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => taskWidget),
+      );
+    }
   }
 
   @override
@@ -4061,276 +4272,951 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
           .where('date', isEqualTo: DateTime.now().toIso8601String().split('T')[0])
           .snapshots(),
       builder: (context, taskSnapshot) {
+        // 錯誤處理
+        if (taskSnapshot.hasError) {
+          print('Task stream error: ${taskSnapshot.error}');
+          return Center(child: Text('載入任務時發生錯誤'));
+        }
+
         return StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
-              .collection('pets')
+              .collection('user_progress')
               .doc(userId)
               .snapshots(),
-          builder: (context, petSnapshot) {
-            // 處理任務數據
-            Map<String, bool> taskCompletions = {};
-            if (taskSnapshot.hasData) {
-              for (var doc in taskSnapshot.data!.docs) {
-                var data = doc.data() as Map<String, dynamic>;
-                taskCompletions[data['taskTitle']] = data['isCompleted'] ?? false;
-              }
+          builder: (context, progressSnapshot) {
+            // 錯誤處理
+            if (progressSnapshot.hasError) {
+              print('Progress stream error: ${progressSnapshot.error}');
+              return Center(child: Text('載入進度時發生錯誤'));
             }
 
-            int completedTasksCount = taskCompletions.values.where((completed) => completed).length;
+            return StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('pets')
+                  .doc(userId)
+                  .snapshots(),
+              builder: (context, petSnapshot) {
+                // 錯誤處理
+                if (petSnapshot.hasError) {
+                  print('Pet stream error: ${petSnapshot.error}');
+                  return Center(child: Text('載入寵物資料時發生錯誤'));
+                }
 
-            // 處理寵物數據
-            Map<String, dynamic> petData = {};
-            if (petSnapshot.hasData && petSnapshot.data!.exists) {
-              petData = petSnapshot.data!.data() as Map<String, dynamic>;
-            } else {
-              petData = {
-                'name': '小花',
-                'level': 1,
-                'experience': 0,
-                'happiness': 50,
-              };
-            }
+                // 檢查組件狀態
+                if (_isDisposed) {
+                  return SizedBox.shrink();
+                }
 
-            final List<Map<String, dynamic>> tasks = [
-              {'title': '喝足夠的水', 'subtitle': '8杯水', 'icon': Icons.local_drink, 'color': Colors.blue},
-              {'title': '運動10分鐘', 'subtitle': '簡單伸展', 'icon': Icons.fitness_center, 'color': Colors.green},
-              {'title': '冥想5分鐘', 'subtitle': '放鬆心情', 'icon': Icons.self_improvement, 'color': Colors.purple},
-              {'title': '感恩練習', 'subtitle': '記錄感恩的事', 'icon': Icons.favorite, 'color': Colors.pink},
-            ];
+                // 處理今日任務數據
+                Map<String, bool> taskCompletions = {};
+                if (taskSnapshot.hasData && taskSnapshot.data != null) {
+                  for (var doc in taskSnapshot.data!.docs) {
+                    var data = doc.data() as Map<String, dynamic>;
+                    taskCompletions[data['taskTitle']] = data['isCompleted'] ?? false;
+                  }
+                }
 
-            return Scaffold(
-              backgroundColor: _getBackgroundColor(completedTasksCount),
-              body: SingleChildScrollView(
-                padding: EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    // 標題
-                    Text(
-                      '成長花園 🌱',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green[800],
-                      ),
-                    ),
-                    SizedBox(height: 20),
+                int todayCompletedTasks = taskCompletions.values.where((completed) => completed).length;
 
-                    // 寵物和樹的狀態區域
-                    Container(
-                      padding: EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 10,
-                            offset: Offset(0, 2),
+                // 處理總體進度數據
+                Map<String, dynamic> progressData = {};
+                if (progressSnapshot.hasData && progressSnapshot.data!.exists) {
+                  progressData = progressSnapshot.data!.data() as Map<String, dynamic>;
+                }
+
+                int totalTasksCompleted = progressData['totalTasksCompleted'] ?? 0;
+                int totalExperience = progressData['totalExperience'] ?? 0;
+                int currentLevel = progressData['currentLevel'] ?? 1;
+                int consecutiveDays = progressData['consecutiveDays'] ?? 0;
+
+                // 處理寵物數據
+                Map<String, dynamic> petData = {};
+                if (petSnapshot.hasData && petSnapshot.data!.exists) {
+                  petData = petSnapshot.data!.data() as Map<String, dynamic>;
+                } else {
+                  petData = {
+                    'name': '小花',
+                    'level': 1,
+                    'experience': 0,
+                    'happiness': 50,
+                  };
+                }
+
+                final List<Map<String, dynamic>> tasks = [
+                  {'title': '喝足夠的水', 'subtitle': '8杯水', 'icon': Icons.local_drink, 'color': Colors.blue},
+                  {'title': '運動10分鐘', 'subtitle': '簡單伸展', 'icon': Icons.fitness_center, 'color': Colors.green},
+                  {'title': '冥想5分鐘', 'subtitle': '放鬆心情', 'icon': Icons.self_improvement, 'color': Colors.purple},
+                  {'title': '感恩練習', 'subtitle': '記錄感恩的事', 'icon': Icons.favorite, 'color': Colors.pink},
+                ];
+
+                return Scaffold(
+                  backgroundColor: _getBackgroundColor(totalTasksCompleted),
+                  body: SingleChildScrollView(
+                    padding: EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        // 標題
+                        Text(
+                          '成長花園 🌱',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[800],
                           ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              // 寵物區域
-                              Column(
-                                children: [
-                                  Text('我的夥伴', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                  SizedBox(height: 10),
-                                  CircleAvatar(
-                                    radius: 40,
-                                    backgroundColor: Colors.pink[100],
-                                    child: Icon(Icons.pets, size: 40, color: Colors.pink[400]),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(petData['name'] ?? '小花', style: TextStyle(fontWeight: FontWeight.bold)),
-                                  Text('Level ${petData['level'] ?? 1}', style: TextStyle(color: Colors.grey[600])),
-                                ],
+                        ),
+                        SizedBox(height: 20),
+
+                        // 總體進度卡片
+                        Container(
+                          padding: EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: Offset(0, 2),
                               ),
-                              // 樹區域
-                              Column(
-                                children: [
-                                  Text('成長之樹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                  SizedBox(height: 10),
-                                  AnimatedBuilder(
-                                    animation: _scaleAnimation,
-                                    builder: (context, child) {
-                                      return Transform.scale(
-                                        scale: _scaleAnimation.value,
-                                        child: Text(
-                                          _getTreeStage(completedTasksCount),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                '我的成長歷程',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green[800],
+                                ),
+                              ),
+                              SizedBox(height: 15),
+
+                              // 成長樹展示 - 安全的動畫
+                              AnimatedBuilder(
+                                animation: _scaleAnimation,
+                                builder: (context, child) {
+                                  if (_isDisposed) return SizedBox.shrink();
+
+                                  return Transform.scale(
+                                    scale: _scaleAnimation.value,
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          _getTreeStage(totalTasksCompleted, currentLevel),
                                           style: TextStyle(fontSize: 64),
                                         ),
-                                      );
-                                    },
+                                        SizedBox(height: 8),
+                                        Text(
+                                          _getGrowthDescription(totalTasksCompleted),
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.green[600],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+
+                              SizedBox(height: 20),
+
+                              // 進度統計
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _buildStatCard('總任務', '$totalTasksCompleted', Icons.task_alt, Colors.blue),
+                                  _buildStatCard('等級', '$currentLevel', Icons.star, Colors.orange),
+                                  _buildStatCard('連續天數', '$consecutiveDays', Icons.local_fire_department, Colors.red),
+                                ],
+                              ),
+
+                              SizedBox(height: 15),
+
+                              // 經驗值進度條
+                              Column(
+                                children: [
+                                  Text('總經驗值: $totalExperience'),
+                                  SizedBox(height: 5),
+                                  LinearProgressIndicator(
+                                    value: (totalExperience % 100) / 100.0,
+                                    backgroundColor: Colors.grey[300],
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green[400]!),
                                   ),
-                                  Text('今日進度 $completedTasksCount/4', style: TextStyle(color: Colors.grey[600])),
+                                  SizedBox(height: 5),
+                                  Text(
+                                    '距離下個里程碑: ${100 - (totalExperience % 100)} 經驗值',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                  ),
                                 ],
                               ),
                             ],
                           ),
-                          SizedBox(height: 15),
-                          // 寵物狀態條
-                          Column(
+                        ),
+
+                        SizedBox(height: 20),
+
+                        // 寵物和今日進度區域
+                        Container(
+                          padding: EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
                             children: [
+                              Text(
+                                '今日夥伴狀態',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue[800],
+                                ),
+                              ),
+                              SizedBox(height: 15),
+
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                 children: [
-                                  Text('經驗值: ${petData['experience'] ?? 0}/100'),
-                                  Spacer(),
-                                  Text('快樂值: ${petData['happiness'] ?? 50}/100'),
+                                  // 寵物區域
+                                  Column(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 30,
+                                        backgroundColor: Colors.pink[100],
+                                        child: Icon(Icons.pets, size: 30, color: Colors.pink[400]),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(petData['name'] ?? '小花', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      Text('Level ${petData['level'] ?? 1}', style: TextStyle(color: Colors.grey[600])),
+                                    ],
+                                  ),
+                                  // 今日進度
+                                  Column(
+                                    children: [
+                                      Text('今日進度', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        '$todayCompletedTasks/4',
+                                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green[600]),
+                                      ),
+                                      Text('已完成任務', style: TextStyle(color: Colors.grey[600])),
+                                    ],
+                                  ),
                                 ],
                               ),
-                              SizedBox(height: 5),
-                              Row(
+
+                              SizedBox(height: 15),
+
+                              // 寵物狀態條
+                              Column(
                                 children: [
-                                  Expanded(
-                                    child: LinearProgressIndicator(
-                                      value: (petData['experience'] ?? 0) / 100.0,
-                                      backgroundColor: Colors.grey[300],
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
-                                    ),
+                                  Row(
+                                    children: [
+                                      Text('經驗值: ${petData['experience'] ?? 0}/100'),
+                                      Spacer(),
+                                      Text('快樂值: ${petData['happiness'] ?? 50}/100'),
+                                    ],
                                   ),
-                                  SizedBox(width: 20),
-                                  Expanded(
-                                    child: LinearProgressIndicator(
-                                      value: (petData['happiness'] ?? 50) / 100.0,
-                                      backgroundColor: Colors.grey[300],
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[400]!),
-                                    ),
+                                  SizedBox(height: 5),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: LinearProgressIndicator(
+                                          value: (petData['experience'] ?? 0) / 100.0,
+                                          backgroundColor: Colors.grey[300],
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
+                                        ),
+                                      ),
+                                      SizedBox(width: 20),
+                                      Expanded(
+                                        child: LinearProgressIndicator(
+                                          value: (petData['happiness'] ?? 50) / 100.0,
+                                          backgroundColor: Colors.grey[300],
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[400]!),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                    SizedBox(height: 20),
+                        SizedBox(height: 20),
 
-                    // 任務進度條
-                    Container(
-                      width: double.infinity,
-                      height: 15,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: Colors.grey[300],
-                      ),
-                      child: FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: completedTasksCount / 4,
-                        child: Container(
+                        // 今日任務進度條
+                        Container(
+                          width: double.infinity,
+                          height: 15,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            gradient: LinearGradient(
-                              colors: [Colors.lightBlue, Colors.green.shade400],
-                            ),
+                            color: Colors.grey[300],
                           ),
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 20),
-
-                    // 任務列表
-                    Text(
-                      '今日任務',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[800],
-                      ),
-                    ),
-                    SizedBox(height: 15),
-
-                    ...tasks.map((task) {
-                      bool isCompleted = taskCompletions[task['title']] ?? false;
-                      return Container(
-                        margin: EdgeInsets.only(bottom: 12),
-                        child: Card(
-                          elevation: 4,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: task['color'][400],
-                              child: Icon(task['icon'], color: Colors.white),
-                            ),
-                            title: Text(
-                              task['title'],
-                              style: TextStyle(
-                                decoration: isCompleted ? TextDecoration.lineThrough : null,
-                                color: isCompleted ? Colors.grey : Colors.black87,
-                              ),
-                            ),
-                            subtitle: Text(task['subtitle']),
-                            trailing: isCompleted
-                                ? Container(
-                              padding: EdgeInsets.all(8),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: todayCompletedTasks / 4,
+                            child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.green[100],
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.check, color: Colors.green[700], size: 20),
-                            )
-                                : ElevatedButton(
-                              onPressed: () => _openTaskDetail(task['title']),
-                              child: Text('開始'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: task['color'][400],
-                                foregroundColor: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                gradient: LinearGradient(
+                                  colors: [Colors.lightBlue, Colors.green.shade400],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      );
-                    }).toList(),
 
-                    // 完成慶祝區域
-                    if (completedTasksCount >= 4) ...[
-                      SizedBox(height: 20),
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Colors.yellow.shade100, Colors.orange.shade100],
+                        SizedBox(height: 20),
+
+                        // 任務列表
+                        Text(
+                          '今日任務',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[800],
                           ),
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.orange, width: 2),
                         ),
-                        child: Column(
-                          children: [
-                            Text(
-                              '🎊 今日任務全部完成！ 🎊',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
+                        SizedBox(height: 15),
+
+                        ...tasks.map((task) {
+                          bool isCompleted = taskCompletions[task['title']] ?? false;
+                          return Container(
+                            margin: EdgeInsets.only(bottom: 12),
+                            child: Card(
+                              elevation: 4,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: task['color'][400],
+                                  child: Icon(task['icon'], color: Colors.white),
+                                ),
+                                title: Text(
+                                  task['title'],
+                                  style: TextStyle(
+                                    decoration: isCompleted ? TextDecoration.lineThrough : null,
+                                    color: isCompleted ? Colors.grey : Colors.black87,
+                                  ),
+                                ),
+                                subtitle: Text(task['subtitle']),
+                                trailing: isCompleted
+                                    ? Container(
+                                  padding: EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green[100],
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.check, color: Colors.green[700], size: 20),
+                                )
+                                    : ElevatedButton(
+                                  onPressed: () => _openTaskDetail(task['title']),
+                                  child: Text('開始'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: task['color'][400],
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
-                            SizedBox(height: 10),
-                            Text(
-                              '你的寵物和樹都成長了！\n明天繼續加油！',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 16),
+                          );
+                        }).toList(),
+
+                        // 完成慶祝區域
+                        if (todayCompletedTasks >= 4) ...[
+                          SizedBox(height: 20),
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Colors.yellow.shade100, Colors.orange.shade100],
+                              ),
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: Colors.orange, width: 2),
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  '🎊 今日任務全部完成！ 🎊',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                                SizedBox(height: 10),
+                                Text(
+                                  '你的寵物和樹都成長了！\n總完成任務: $totalTasksCompleted 個\n明天繼續加油！',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
             );
           },
         );
       },
     );
   }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class SafeStatefulWidget extends StatefulWidget {
+  @override
+  _SafeStatefulWidgetState createState() => _SafeStatefulWidgetState();
 }
 
+class _SafeStatefulWidgetState extends State<SafeStatefulWidget>
+    with TickerProviderStateMixin {
+
+  // ===== 必要的生命週期控制變數 =====
+  bool _isDisposed = false;
+  List<StreamSubscription> _subscriptions = [];
+  List<AnimationController> _animationControllers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // 初始化時的操作
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+
+    // 取消所有訂閱
+    for (var subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+
+    // 銷毀所有動畫控制器
+    for (var controller in _animationControllers) {
+      if (controller.isAnimating) {
+        controller.stop();
+      }
+      controller.dispose();
+    }
+    _animationControllers.clear();
+
+    super.dispose();
+  }
+
+  // ===== 安全的 setState 方法 =====
+  void _safeSetState(VoidCallback fn) {
+    if (mounted && !_isDisposed) {
+      setState(fn);
+    }
+  }
+
+  // ===== 安全的異步操作模板 =====
+  Future<void> _safeAsyncOperation() async {
+    if (_isDisposed) return;
+
+    try {
+      // 執行異步操作
+      await Future.delayed(Duration(seconds: 1));
+
+      // 檢查組件是否仍然存在
+      if (!_isDisposed && mounted) {
+        _safeSetState(() {
+          // 更新狀態
+        });
+      }
+    } catch (e) {
+      print('異步操作錯誤: $e');
+      // 錯誤處理
+      if (!_isDisposed && mounted) {
+        // 顯示錯誤訊息
+      }
+    }
+  }
+
+  // ===== 安全的 StreamBuilder 使用 =====
+  Widget _buildSafeStreamBuilder() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('test')
+          .doc('test')
+          .snapshots(),
+      builder: (context, snapshot) {
+        // 錯誤處理
+        if (snapshot.hasError) {
+          print('Stream 錯誤: ${snapshot.error}');
+          return Center(child: Text('載入時發生錯誤'));
+        }
+
+        // 檢查組件狀態
+        if (_isDisposed) {
+          return SizedBox.shrink();
+        }
+
+        // 正常渲染
+        return Container();
+      },
+    );
+  }
+
+  // ===== 安全的動畫控制器創建 =====
+  AnimationController _createSafeAnimationController({
+    required Duration duration,
+  }) {
+    final controller = AnimationController(
+      duration: duration,
+      vsync: this,
+    );
+
+    // 添加到列表中以便銷毀時清理
+    _animationControllers.add(controller);
+
+    return controller;
+  }
+
+  // ===== 安全的 Firebase 操作 =====
+  Future<void> _safeFirebaseOperation() async {
+    if (_isDisposed) return;
+
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || _isDisposed) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('test')
+          .doc(userId)
+          .set({'data': 'value'});
+
+      if (!_isDisposed && mounted) {
+        _safeSetState(() {
+          // 更新UI
+        });
+      }
+    } catch (e) {
+      print('Firebase 操作錯誤: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isDisposed) {
+      return SizedBox.shrink();
+    }
+
+    return Scaffold(
+      body: Center(
+        child: Text('Safe Widget'),
+      ),
+    );
+  }
+}
+class FixedAuthWrapper extends StatefulWidget {
+  @override
+  _FixedAuthWrapperState createState() => _FixedAuthWrapperState();
+}
+
+class _FixedAuthWrapperState extends State<FixedAuthWrapper> {
+  bool _isInitialized = false;
+  StreamSubscription<User?>? _authSubscription;
+  User? _currentUser;
+  bool _isDisposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAuthAsync();
+  }
+
+  Future<void> _initializeAuthAsync() async {
+    if (_isDisposed) return;
+
+    try {
+      print('AuthWrapper - 開始異步初始化');
+      await Future.delayed(Duration(milliseconds: 100));
+
+      if (_isDisposed) return;
+
+      _currentUser = FirebaseAuth.instance.currentUser;
+      print('AuthWrapper - 當前用戶: ${_currentUser?.email ?? "未登入"}');
+
+      _setupAuthListener();
+
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+
+      print('AuthWrapper - 初始化完成');
+    } catch (e) {
+      print('AuthWrapper - 初始化錯誤: $e');
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    }
+  }
+
+  void _setupAuthListener() {
+    _authSubscription?.cancel();
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
+          (User? user) {
+        print('AuthWrapper - 認證狀態變化: ${user?.email ?? "未登入"}');
+
+        if (mounted && !_isDisposed) {
+          scheduleMicrotask(() {
+            if (mounted && !_isDisposed) {
+              setState(() {
+                _currentUser = user;
+              });
+            }
+          });
+        }
+      },
+      onError: (error) {
+        print('AuthWrapper - 認證監聽錯誤: $error');
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isDisposed) {
+      return SizedBox.shrink();
+    }
+
+    if (!_isInitialized) {
+      return SplashScreen();
+    }
+
+    if (_currentUser != null) {
+      print('用戶已登入: ${_currentUser?.email}');
+      return QuestionnaireWrapper();
+    } else {
+      print('用戶未登入，顯示登入頁面');
+      return LoginPage();
+    }
+  }
+}
+// ===== 3. 修復 QuestionnaireWrapper 的生命週期問題 =====
+class FixedQuestionnaireWrapper extends StatefulWidget {
+  @override
+  _FixedQuestionnaireWrapperState createState() => _FixedQuestionnaireWrapperState();
+}
+
+class _FixedQuestionnaireWrapperState extends State<FixedQuestionnaireWrapper> {
+  StreamSubscription<DocumentSnapshot>? _userDocSubscription;
+  bool _isDisposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeUserData();
+  }
+
+  Future<void> _initializeUserData() async {
+    if (_isDisposed) return;
+
+    String? userId = FirebaseAuth.instance.currentUser?.uid;
+    print('QuestionnaireWrapper - 用戶ID: $userId');
+
+    if (userId == null || _isDisposed) {
+      print('QuestionnaireWrapper - 用戶ID為空，返回登入頁面');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isDisposed) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => LoginPage()),
+          );
+        }
+      });
+      return;
+    }
+
+    try {
+      await _ensureUserDocumentExists(userId);
+      if (!_isDisposed) {
+        _setupUserDocListener(userId);
+      }
+    } catch (e) {
+      print('QuestionnaireWrapper - 初始化失敗: $e');
+      if (!_isDisposed) {
+        _showErrorAndRedirect(e.toString());
+      }
+    }
+  }
+
+  void _setupUserDocListener(String userId) {
+    _userDocSubscription?.cancel();
+
+    _userDocSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .snapshots()
+        .listen(
+          (DocumentSnapshot snapshot) {
+        if (mounted && !_isDisposed && snapshot.exists) {
+          Map<String, dynamic> userData = snapshot.data() as Map<String, dynamic>;
+          print('QuestionnaireWrapper - 用戶資料: ${userData.keys.toList()}');
+
+          bool needsQuestionnaire = _shouldShowQuestionnaire(userData);
+          print('QuestionnaireWrapper - 是否需要問卷: $needsQuestionnaire');
+
+          if (needsQuestionnaire) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => BDIWelcomeScreen()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => MainHomePage()),
+            );
+          }
+        }
+      },
+      onError: (error) {
+        print('QuestionnaireWrapper - Firestore 監聽錯誤: $error');
+        if (error.toString().contains('PERMISSION_DENIED')) {
+          print('權限被拒絕，可能用戶已登出');
+          if (!_isDisposed) {
+            _handlePermissionDenied();
+          }
+        }
+      },
+    );
+  }
+
+  void _handlePermissionDenied() {
+    if (mounted && !_isDisposed) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LoginPage()),
+      );
+    }
+  }
+
+  Future<void> _ensureUserDocumentExists(String userId) async {
+    if (_isDisposed) return;
+
+    try {
+      DocumentReference userDocRef = FirebaseFirestore.instance.collection('users').doc(userId);
+      DocumentSnapshot userDoc = await userDocRef.get();
+
+      if (!userDoc.exists && !_isDisposed) {
+        User? currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser == null) {
+          throw Exception('用戶已登出');
+        }
+
+        String displayName = currentUser.displayName ??
+            currentUser.email?.split('@')[0] ??
+            '用戶${userId.substring(0, 6)}';
+
+        await userDocRef.set({
+          'email': currentUser.email,
+          'displayName': displayName,
+          'photoURL': currentUser.photoURL,
+          'role': '個人使用者',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'signInMethod': currentUser.providerData.isNotEmpty
+              ? currentUser.providerData.first.providerId
+              : 'email',
+          'isAnonymous': false,
+          'questionnaireCompleted': false,
+          'lastQuestionnaireDate': null,
+          'lastQuestionnaireScore': null,
+          'lastQuestionnaireLevel': null,
+        });
+
+        print('用戶文檔創建成功');
+      }
+    } catch (e) {
+      print('確保用戶文檔存在時出錯: $e');
+      rethrow;
+    }
+  }
+
+  bool _shouldShowQuestionnaire(Map<String, dynamic> userData) {
+    try {
+      if (!userData.containsKey('lastQuestionnaireDate') ||
+          userData['lastQuestionnaireDate'] == null) {
+        return true;
+      }
+
+      Timestamp? lastQuestionnaireDate = userData['lastQuestionnaireDate'];
+      if (lastQuestionnaireDate == null) {
+        return true;
+      }
+
+      DateTime lastDate = lastQuestionnaireDate.toDate();
+      DateTime now = DateTime.now();
+      int daysDifference = now.difference(lastDate).inDays;
+
+      return daysDifference >= 14;
+    } catch (e) {
+      print('檢查問卷狀態時出錯: $e');
+      return true;
+    }
+  }
+
+  void _showErrorAndRedirect(String error) {
+    if (mounted && !_isDisposed) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('載入錯誤'),
+          content: Text(error),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => LoginPage()),
+                );
+              },
+              child: Text('重新登入'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _userDocSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isDisposed) {
+      return SizedBox.shrink();
+    }
+    return SplashScreen();
+  }
+}
+
+// ===== 4. 通用錯誤處理和安全導航 =====
+class SafeNavigationHelper {
+  static void safePush(BuildContext context, Widget page) {
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => page),
+      );
+    }
+  }
+
+  static void safePushReplacement(BuildContext context, Widget page) {
+    if (context.mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => page),
+      );
+    }
+  }
+
+  static void safePushAndRemoveUntil(BuildContext context, Widget page) {
+    if (context.mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => page),
+            (route) => false,
+      );
+    }
+  }
+
+  static void safeShowSnackBar(BuildContext context, String message, {Color? backgroundColor}) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: backgroundColor,
+        ),
+      );
+    }
+  }
+}
+
+// ===== 5. 安全的 Firebase 操作包裝器 =====
+class SafeFirebaseHelper {
+  static Future<T?> safeFirebaseOperation<T>(
+      Future<T> operation, {
+        required bool Function() shouldContinue,
+        String? errorMessage,
+      }) async {
+    if (!shouldContinue()) return null;
+
+    try {
+      final result = await operation;
+      return shouldContinue() ? result : null;
+    } catch (e) {
+      print('Firebase 操作錯誤: $e');
+      if (errorMessage != null) {
+        print(errorMessage);
+      }
+      return null;
+    }
+  }
+}
 // 喝水任務
 class DrinkingTask extends StatefulWidget {
   final VoidCallback onCompleted;
