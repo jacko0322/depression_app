@@ -29,8 +29,12 @@ class DepressionApp extends StatelessWidget {
     return MaterialApp(
       title: '心靈陪伴',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.amber,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.amber[600],
+          foregroundColor: Colors.white,
+        ),
       ),
       home: AuthWrapper(),
       debugShowCheckedModeBanner: false,
@@ -344,7 +348,7 @@ class BDIWelcomeScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Colors.blue, Colors.lightBlueAccent],
+            colors: [Colors.amber, Colors.lightBlueAccent],
           ),
         ),
         child: SafeArea(
@@ -402,7 +406,7 @@ class BDIWelcomeScreen extends StatelessWidget {
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
-                    foregroundColor: Colors.blue,
+                    foregroundColor: Colors.amber,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 48,
                       vertical: 16,
@@ -799,7 +803,7 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
+              backgroundColor: Colors.amber,
               foregroundColor: Colors.white,
             ),
             child: const Text('進入應用'),
@@ -848,7 +852,7 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
         title: Text('問題 ${currentQuestionIndex + 1} / 21'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.amber,
         foregroundColor: Colors.white,
         elevation: 0,
         automaticallyImplyLeading: false, // 禁用返回按鈕
@@ -862,7 +866,7 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
             child: LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.grey[300],
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -880,16 +884,16 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
+                        color: Colors.amber.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        border: Border.all(color: Colors.amber.withOpacity(0.3)),
                       ),
                       child: Text(
                         bdiQuestions[currentQuestionIndex]['question'],
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blue,
+                          color: Colors.amber,
                         ),
                       ),
                     ),
@@ -905,12 +909,12 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isSelected
-                                ? Colors.blue
+                                ? Colors.amber
                                 : Colors.grey.withOpacity(0.3),
                             width: isSelected ? 2 : 1,
                           ),
                           color: isSelected
-                              ? Colors.blue.withOpacity(0.1)
+                              ? Colors.amber.withOpacity(0.1)
                               : Colors.white,
                         ),
                         child: RadioListTile<int>(
@@ -921,7 +925,7 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
                               fontWeight: isSelected
                                   ? FontWeight.w600
                                   : FontWeight.normal,
-                              color: isSelected ? Colors.blue : Colors.black87,
+                              color: isSelected ? Colors.amber : Colors.black87,
                             ),
                           ),
                           value: index,
@@ -931,7 +935,7 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
                               answers[currentQuestionIndex] = value!;
                             });
                           },
-                          activeColor: Colors.blue,
+                          activeColor: Colors.amber,
                         ),
                       );
                     }),
@@ -964,7 +968,7 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
                       onPressed: _previousQuestion,
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: const BorderSide(color: Colors.blue),
+                        side: const BorderSide(color: Colors.amber),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -980,7 +984,7 @@ class _BDIFormState extends State<BDIForm> with TickerProviderStateMixin {
                   child: ElevatedButton(
                     onPressed: _nextQuestion,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: Colors.amber,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
@@ -1015,14 +1019,14 @@ class SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.favorite, size: 100, color: Colors.blue[300]),
+            Icon(Icons.favorite, size: 100, color: Colors.amber[300]),
             SizedBox(height: 20),
             Text(
               '心靈陪伴',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
-                color: Colors.blue[800],
+                color: Colors.amber[800],
               ),
             ),
             SizedBox(height: 10),
@@ -1032,7 +1036,7 @@ class SplashScreen extends StatelessWidget {
             ),
             SizedBox(height: 30),
             CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.amber[400]!),
             ),
           ],
         ),
@@ -1160,11 +1164,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
-              colors: [Colors.blue[300]!, Colors.blue[600]!],
+              colors: [Colors.amber[300]!, Colors.amber[600]!],
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.amber.withOpacity(0.3),
                 blurRadius: 20,
                 offset: Offset(0, 10),
               ),
@@ -1182,7 +1186,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: Colors.blue[800],
+            color: Colors.amber[800],
           ),
         ),
         SizedBox(height: 8),
@@ -1215,7 +1219,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.blue[400]!, width: 2),
+          borderSide: BorderSide(color: Colors.amber[400]!, width: 2),
         ),
         filled: true,
         fillColor: Colors.grey[50],
@@ -1257,7 +1261,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.blue[400]!, width: 2),
+          borderSide: BorderSide(color: Colors.amber[400]!, width: 2),
         ),
         filled: true,
         fillColor: Colors.grey[50],
@@ -1280,7 +1284,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       child: ElevatedButton(
         onPressed: _isLoading ? null : _handleEmailAuth,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue[600],
+          backgroundColor: Colors.amber[600],
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -1376,7 +1380,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           child: Text(
             _isLogin ? '立即註冊' : '立即登入',
             style: TextStyle(
-              color: Colors.blue[600],
+              color: Colors.amber[600],
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -1394,7 +1398,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         child: Text(
           '忘記密碼？',
           style: TextStyle(
-            color: Colors.blue[600],
+            color: Colors.amber[600],
             decoration: TextDecoration.underline,
           ),
         ),
@@ -1614,7 +1618,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: Row(
           children: [
-            Icon(Icons.lock_reset, color: Colors.blue[600]),
+            Icon(Icons.lock_reset, color: Colors.amber[600]),
             SizedBox(width: 8),
             Text('重設密碼'),
           ],
@@ -1668,7 +1672,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[600],
+              backgroundColor: Colors.amber[600],
               foregroundColor: Colors.white,
             ),
             child: Text('發送'),
@@ -1973,9 +1977,9 @@ class _MainHomePageState extends State<MainHomePage> {
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundColor: Colors.blue[100],
+              backgroundColor: Colors.amber[100],
               backgroundImage: user.photoURL != null ? NetworkImage(user.photoURL!) : null,
-              child: user.photoURL == null ? Icon(Icons.person, color: Colors.blue[600]) : null,
+              child: user.photoURL == null ? Icon(Icons.person, color: Colors.amber[600]) : null,
             ),
             SizedBox(width: 12),
             Text('個人資料'),
@@ -2052,7 +2056,7 @@ class _MainHomePageState extends State<MainHomePage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         title: Row(
           children: [
-            Icon(Icons.quiz, color: Colors.blue[600]),
+            Icon(Icons.quiz, color: Colors.amber[600]),
             SizedBox(width: 8),
             Text('重新填寫問卷'),
           ],
@@ -2072,7 +2076,7 @@ class _MainHomePageState extends State<MainHomePage> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[600],
+              backgroundColor: Colors.amber[600],
               foregroundColor: Colors.white,
             ),
             child: Text('確定'),
@@ -2134,7 +2138,7 @@ class _MainHomePageState extends State<MainHomePage> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text('心靈陪伴'),
-        backgroundColor: Colors.blue[400],
+        backgroundColor: Colors.amber[400],
         foregroundColor: Colors.white,
         elevation: 2,
         actions: [
@@ -2193,7 +2197,7 @@ class _MainHomePageState extends State<MainHomePage> {
                   value: 'profile',
                   child: Row(
                     children: [
-                      Icon(Icons.person, size: 20, color: Colors.blue[600]),
+                      Icon(Icons.person, size: 20, color: Colors.amber[600]),
                       SizedBox(width: 8),
                       Text('個人資料'),
                     ],
@@ -2247,7 +2251,7 @@ class _MainHomePageState extends State<MainHomePage> {
             });
           },
           type: BottomNavigationBarType.fixed,
-          selectedItemColor: Colors.blue[600],
+          selectedItemColor: Colors.amber[600],
           unselectedItemColor: Colors.grey[600],
           selectedFontSize: 12,
           unselectedFontSize: 10,
@@ -2300,7 +2304,7 @@ class QuestionnaireHistoryPage extends StatelessWidget {
       return Scaffold(
         appBar: AppBar(
           title: Text('問卷歷史'),
-          backgroundColor: Colors.blue[400],
+          backgroundColor: Colors.amber[400],
           foregroundColor: Colors.white,
         ),
         body: Center(
@@ -2319,7 +2323,7 @@ class QuestionnaireHistoryPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text('問卷歷史'),
-        backgroundColor: Colors.blue[400],
+        backgroundColor: Colors.amber[400],
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -2529,14 +2533,14 @@ class _CommunityPageState extends State<CommunityPage> with SingleTickerProvider
               children: [
                 Row(
                   children: [
-                    Icon(Icons.forum, color: Colors.blue[600], size: 28),
+                    Icon(Icons.forum, color: Colors.amber[600], size: 28),
                     SizedBox(width: 8),
                     Text(
                       '社群支持',
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
-                        color: Colors.blue[800],
+                        color: Colors.amber[800],
                       ),
                     ),
                   ],
@@ -2558,9 +2562,9 @@ class _CommunityPageState extends State<CommunityPage> with SingleTickerProvider
               Tab(text: '心情廣場'),
               Tab(text: '我的分享'),
             ],
-            labelColor: Colors.blue[600],
+            labelColor: Colors.amber[600],
             unselectedLabelColor: Colors.grey[600],
-            indicatorColor: Colors.blue[600],
+            indicatorColor: Colors.amber[600],
           ),
           Expanded(
             child: TabBarView(
@@ -2581,7 +2585,7 @@ class _CommunityPageState extends State<CommunityPage> with SingleTickerProvider
           );
         },
         child: Icon(Icons.add),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: Colors.amber[600],
       ),
     );
   }
@@ -3097,12 +3101,12 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
               children: [
                 CircleAvatar(
                   radius: 20,
-                  backgroundColor: Colors.blue[100],
+                  backgroundColor: Colors.amber[100],
                   child: isAnonymous
-                      ? Icon(Icons.person, color: Colors.blue[600])
+                      ? Icon(Icons.person, color: Colors.amber[600])
                       : (widget.postData['authorPhotoURL'] != null
                       ? null
-                      : Icon(Icons.person, color: Colors.blue[600])),
+                      : Icon(Icons.person, color: Colors.amber[600])),
                   backgroundImage: (!isAnonymous && widget.postData['authorPhotoURL'] != null)
                       ? NetworkImage(widget.postData['authorPhotoURL'])
                       : null,
@@ -3449,7 +3453,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('分享心情'),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: Colors.amber[600],
         foregroundColor: Colors.white,
         actions: [
           TextButton(
@@ -3497,10 +3501,10 @@ class _CreatePostPageState extends State<CreatePostPage> {
                       margin: EdgeInsets.only(right: 8),
                       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: isSelected ? Colors.blue[100] : Colors.grey[100],
+                        color: isSelected ? Colors.amber[100] : Colors.grey[100],
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: isSelected ? Colors.blue[400]! : Colors.grey[300]!,
+                          color: isSelected ? Colors.amber[400]! : Colors.grey[300]!,
                           width: 1,
                         ),
                       ),
@@ -3513,7 +3517,7 @@ class _CreatePostPageState extends State<CreatePostPage> {
                             mood['label'],
                             style: TextStyle(
                               fontSize: 12,
-                              color: isSelected ? Colors.blue[600] : Colors.grey[600],
+                              color: isSelected ? Colors.amber[600] : Colors.grey[600],
                             ),
                           ),
                         ],
@@ -3577,17 +3581,17 @@ class _CreatePostPageState extends State<CreatePostPage> {
             Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.blue[50],
+                color: Colors.amber[50],
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.blue[600], size: 16),
+                  Icon(Icons.info_outline, color: Colors.amber[600], size: 16),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '記住：這裡是一個相互支持的社群，請保持善意和尊重。',
-                      style: TextStyle(fontSize: 12, color: Colors.blue[600]),
+                      style: TextStyle(fontSize: 12, color: Colors.amber[600]),
                     ),
                   ),
                 ],
@@ -3696,7 +3700,7 @@ class _PostCommentsPageState extends State<PostCommentsPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('回覆'),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: Colors.amber[600],
         foregroundColor: Colors.white,
       ),
       body: Column(
@@ -3810,7 +3814,7 @@ class _PostCommentsPageState extends State<PostCommentsPage> {
                   child: Container(
                     padding: EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue[600],
+                      color: Colors.amber[600],
                       shape: BoxShape.circle,
                     ),
                     child: _isLoading
@@ -3881,10 +3885,10 @@ class CommentCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: Colors.blue[100],
+                backgroundColor: Colors.amber[100],
                 child: comment['authorPhotoURL'] != null
                     ? null
-                    : Icon(Icons.person, color: Colors.blue[600], size: 16),
+                    : Icon(Icons.person, color: Colors.amber[600], size: 16),
                 backgroundImage: comment['authorPhotoURL'] != null
                     ? NetworkImage(comment['authorPhotoURL'])
                     : null,
@@ -4343,7 +4347,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
                 }
 
                 final List<Map<String, dynamic>> tasks = [
-                  {'title': '喝足夠的水', 'subtitle': '8杯水', 'icon': Icons.local_drink, 'color': Colors.blue},
+                  {'title': '喝足夠的水', 'subtitle': '8杯水', 'icon': Icons.local_drink, 'color': Colors.amber},
                   {'title': '運動10分鐘', 'subtitle': '簡單伸展', 'icon': Icons.fitness_center, 'color': Colors.green},
                   {'title': '冥想5分鐘', 'subtitle': '放鬆心情', 'icon': Icons.self_improvement, 'color': Colors.purple},
                   {'title': '感恩練習', 'subtitle': '記錄感恩的事', 'icon': Icons.favorite, 'color': Colors.pink},
@@ -4427,7 +4431,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                 children: [
-                                  _buildStatCard('總任務', '$totalTasksCompleted', Icons.task_alt, Colors.blue),
+                                  _buildStatCard('總任務', '$totalTasksCompleted', Icons.task_alt, Colors.amber),
                                   _buildStatCard('等級', '$currentLevel', Icons.star, Colors.orange),
                                   _buildStatCard('連續天數', '$consecutiveDays', Icons.local_fire_department, Colors.red),
                                 ],
@@ -4479,7 +4483,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.blue[800],
+                                  color: Colors.amber[800],
                                 ),
                               ),
                               SizedBox(height: 15),
@@ -4534,7 +4538,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
                                         child: LinearProgressIndicator(
                                           value: (petData['experience'] ?? 0) / 100.0,
                                           backgroundColor: Colors.grey[300],
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.amber[400]!),
                                         ),
                                       ),
                                       SizedBox(width: 20),
@@ -4585,7 +4589,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue[800],
+                            color: Colors.amber[800],
                           ),
                         ),
                         SizedBox(height: 15),
@@ -5236,11 +5240,11 @@ class _DrinkingTaskState extends State<DrinkingTask> {
     return Scaffold(
       appBar: AppBar(
         title: Text('喝水任務 💧'),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: Colors.amber[600],
         foregroundColor: Colors.white,
       ),
       body: Container(
-        color: Colors.blue[50],
+        color: Colors.amber[50],
         child: Center(
           child: Padding(
             padding: EdgeInsets.all(20),
@@ -5261,7 +5265,7 @@ class _DrinkingTaskState extends State<DrinkingTask> {
                   value: glasses / targetGlasses,
                   minHeight: 10,
                   backgroundColor: Colors.grey[300],
-                  color: Colors.blue,
+                  color: Colors.amber,
                 ),
                 SizedBox(height: 40),
                 ElevatedButton(
@@ -5280,7 +5284,7 @@ class _DrinkingTaskState extends State<DrinkingTask> {
                       : null,
                   child: Text('喝一杯水 🥤', style: TextStyle(fontSize: 18)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[600],
+                    backgroundColor: Colors.amber[600],
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                   ),
@@ -5763,7 +5767,7 @@ class _MoodRecordPageState extends State<MoodRecordPage> {
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: Colors.blue[800],
+              color: Colors.amber[800],
             ),
           ),
           SizedBox(height: 20),
@@ -5792,7 +5796,7 @@ class _MoodRecordPageState extends State<MoodRecordPage> {
                 ? CircularProgressIndicator(color: Colors.white)
                 : Text('儲存記錄'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[400],
+              backgroundColor: Colors.amber[400],
               foregroundColor: Colors.white,
               minimumSize: Size(double.infinity, 50),
             ),
@@ -5820,10 +5824,10 @@ class _MoodRecordPageState extends State<MoodRecordPage> {
       child: Container(
         padding: EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blue[100] : Colors.grey[100],
+          color: isSelected ? Colors.amber[100] : Colors.grey[100],
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected ? Colors.blue[400]! : Colors.grey[300]!,
+            color: isSelected ? Colors.amber[400]! : Colors.grey[300]!,
             width: 2,
           ),
         ),
@@ -5961,7 +5965,7 @@ class RelaxationPage extends StatelessWidget {
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: Colors.blue[800],
+              color: Colors.amber[800],
             ),
           ),
           SizedBox(height: 20),
@@ -5981,7 +5985,7 @@ class RelaxationPage extends StatelessWidget {
                   '戳泡泡紙',
                   '🎈',
                   '釋放壓力的最佳方式',
-                  Colors.blue,
+                  Colors.amber,
                       () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => PopItPage()),
@@ -6158,7 +6162,7 @@ class _PopItPageState extends State<PopItPage> with TickerProviderStateMixin {
     return Scaffold(
       appBar: AppBar(
         title: Text('戳泡泡紙'),
-        backgroundColor: Colors.blue[400],
+        backgroundColor: Colors.amber[400],
         foregroundColor: Colors.white,
         actions: [
           IconButton(onPressed: _resetGame, icon: Icon(Icons.refresh)),
@@ -6169,7 +6173,7 @@ class _PopItPageState extends State<PopItPage> with TickerProviderStateMixin {
           Container(
             padding: EdgeInsets.all(16),
             width: double.infinity,
-            color: Colors.blue[50],
+            color: Colors.amber[50],
             child: Text(
               '已戳破：$poppedCount / ${popped.length}',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -6193,13 +6197,13 @@ class _PopItPageState extends State<PopItPage> with TickerProviderStateMixin {
                     child: AnimatedContainer(
                       duration: Duration(milliseconds: 200),
                       decoration: BoxDecoration(
-                        color: popped[index] ? Colors.grey[300] : Colors.blue[200],
+                        color: popped[index] ? Colors.grey[300] : Colors.amber[200],
                         shape: BoxShape.circle,
                         boxShadow: popped[index]
                             ? []
                             : [
                           BoxShadow(
-                            color: Colors.blue.withOpacity(0.3),
+                            color: Colors.amber.withOpacity(0.3),
                             blurRadius: 4,
                             offset: Offset(2, 2),
                           ),
@@ -6208,7 +6212,7 @@ class _PopItPageState extends State<PopItPage> with TickerProviderStateMixin {
                       child: Center(
                         child: popped[index]
                             ? Icon(Icons.check, color: Colors.grey, size: 20)
-                            : Icon(Icons.circle, color: Colors.blue, size: 16),
+                            : Icon(Icons.circle, color: Colors.amber, size: 16),
                       ),
                     ),
                   );
@@ -6258,7 +6262,7 @@ class _BreathingPageState extends State<BreathingPage> with TickerProviderStateM
 
     _colorAnimation = ColorTween(
       begin: Colors.teal[300],
-      end: Colors.blue[300],
+      end: Colors.amber[300],
     ).animate(_colorController);
   }
 
@@ -6783,7 +6787,7 @@ class EducationPage extends StatelessWidget {
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: Colors.blue[800],
+              color: Colors.amber[800],
             ),
           ),
           SizedBox(height: 10),
@@ -6806,7 +6810,7 @@ class EducationPage extends StatelessWidget {
                   '認識憂鬱症',
                   '了解憂鬱症的症狀和成因',
                   '🧠',
-                  Colors.blue,
+                  Colors.amber,
                       () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => DepressionEducationPage()),
@@ -7031,10 +7035,10 @@ class DepressionEducationPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[50],
+      backgroundColor: Colors.amber[50],
       appBar: AppBar(
         title: Text('認識憂鬱症'),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: Colors.amber[600],
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -7046,7 +7050,7 @@ class DepressionEducationPage extends StatelessWidget {
               '什麼是憂鬱症？',
               '憂鬱症是一種常見的心理疾病，會影響一個人的感受、思考和行為方式。它不僅僅是暫時的情緒低落，而是一種持續的狀態，會干擾日常生活和工作。\n\n憂鬱症影響全球超過2.8億人，是導致殘疾的主要原因之一。重要的是要知道，憂鬱症是可以治療的。',
               Icons.psychology,
-              Colors.blue,
+              Colors.amber,
             ),
             _buildSectionCard(
               '常見症狀',
@@ -7110,23 +7114,23 @@ class DepressionEducationPage extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.blue[100],
+                color: Colors.amber[100],
                 borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: Colors.blue[300]!),
+                border: Border.all(color: Colors.amber[300]!),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.phone, color: Colors.blue[800]),
+                      Icon(Icons.phone, color: Colors.amber[800]),
                       SizedBox(width: 8),
                       Text(
                         '專業協助資源',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blue[800],
+                          color: Colors.amber[800],
                         ),
                       ),
                     ],
@@ -7234,7 +7238,7 @@ class EmotionManagementPage extends StatelessWidget {
               '認知重構技巧',
               '改變負面思維模式，建立更積極的思考方式',
               Icons.psychology,
-              Colors.blue,
+              Colors.amber,
               techniques: [
                 '識別負面思維：注意自動化的負面想法',
                 '質疑想法真實性：這個想法有證據支持嗎？',
@@ -7426,7 +7430,7 @@ class SleepHealthPage extends StatelessWidget {
               '睡眠的重要性',
               '充足的睡眠對身心健康至關重要。睡眠不僅能恢復體力，還對情緒穩定、記憶力提升、免疫系統強化和創造力發揮起著關鍵作用。\n\n成人每晚需要7-9小時的睡眠，但品質比時間更重要。良好的睡眠能幫助大腦清除毒素，鞏固記憶，調節情緒。',
               Icons.info_outline,
-              Colors.blue,
+              Colors.amber,
             ),
             _buildHabitsCard(),
             _buildEnvironmentCard(),
@@ -7766,7 +7770,7 @@ class RelationshipPage extends StatelessWidget {
               '有效溝通技巧',
               '良好的溝通是建立健康關係的基礎',
               Icons.chat,
-              Colors.blue,
+              Colors.amber,
               skills: [
                 '主動傾聽：專注於對方的話語，不打斷',
                 '同理心：嘗試理解對方的感受和觀點',
@@ -8347,7 +8351,7 @@ class _AIChatBotPageState extends State<AIChatBotPage> with TickerProviderStateM
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.blue[400]!, Colors.blue[600]!],
+                colors: [Colors.amber[400]!, Colors.amber[600]!],
               ),
               borderRadius: BorderRadius.only(
                 bottomLeft: Radius.circular(20),
@@ -8423,7 +8427,7 @@ class _AIChatBotPageState extends State<AIChatBotPage> with TickerProviderStateM
                             value: 'debug',
                             child: Row(
                               children: [
-                                Icon(Icons.bug_report, size: 20, color: Colors.blue),
+                                Icon(Icons.bug_report, size: 20, color: Colors.amber),
                                 SizedBox(width: 8),
                                 Text('調試信息'),
                               ],
@@ -8542,7 +8546,7 @@ class _AIChatBotPageState extends State<AIChatBotPage> with TickerProviderStateM
                     child: Container(
                       padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _isLoading ? Colors.grey[400] : Colors.blue[600],
+                        color: _isLoading ? Colors.grey[400] : Colors.amber[600],
                         shape: BoxShape.circle,
                       ),
                       child: _isLoading
@@ -8658,10 +8662,10 @@ class ChatMessageBubble extends StatelessWidget {
             Container(
               padding: EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.blue[100],
+                color: Colors.amber[100],
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.smart_toy, color: Colors.blue[600], size: 20),
+              child: Icon(Icons.smart_toy, color: Colors.amber[600], size: 20),
             ),
             SizedBox(width: 8),
           ],
@@ -8672,7 +8676,7 @@ class ChatMessageBubble extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: message.isUser ? Colors.blue[600] : Colors.white,
+                    color: message.isUser ? Colors.amber[600] : Colors.white,
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(18),
                       topRight: Radius.circular(18),
@@ -8711,8 +8715,8 @@ class ChatMessageBubble extends StatelessWidget {
             SizedBox(width: 8),
             CircleAvatar(
               radius: 16,
-              backgroundColor: Colors.blue[100],
-              child: Icon(Icons.person, color: Colors.blue[600], size: 16),
+              backgroundColor: Colors.amber[100],
+              child: Icon(Icons.person, color: Colors.amber[600], size: 16),
             ),
           ],
         ],
