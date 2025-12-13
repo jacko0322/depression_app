@@ -3931,6 +3931,7 @@ class CommentCard extends StatelessWidget {
 // 以下是原有的其他頁面，保持不變
 // 整合的成長頁面（合併每日任務、角色培養、澆水任務）
 // 修復後的整合成長頁面（根據累積進度改變成長狀態）
+// 修改後的整合成長頁面（只保留大樹系統）
 class IntegratedGrowthPage extends StatefulWidget {
   @override
   _IntegratedGrowthPageState createState() => _IntegratedGrowthPageState();
@@ -3944,7 +3945,6 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
   bool _isDisposed = false;
   StreamSubscription<QuerySnapshot>? _taskSubscription;
   StreamSubscription<DocumentSnapshot>? _progressSubscription;
-  StreamSubscription<DocumentSnapshot>? _petSubscription;
 
   @override
   void initState() {
@@ -3970,7 +3970,6 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
     // 取消所有訂閱
     _taskSubscription?.cancel();
     _progressSubscription?.cancel();
-    _petSubscription?.cancel();
 
     // 停止並銷毀動畫控制器
     if (_celebrationController.isAnimating) {
@@ -4054,9 +4053,6 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
       // 更新總體進度
       await _updateUserProgress(userId);
 
-      // 更新寵物狀態
-      await _updatePetStatus(userId);
-
       // 播放慶祝動畫 - 檢查組件是否仍然存在
       if (!_isDisposed && mounted && _celebrationController.isCompleted == false) {
         _celebrationController.forward().then((_) {
@@ -4070,7 +4066,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
       if (!_isDisposed && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('任務完成！🎉 獲得經驗值+10，寵物快樂值+5！'),
+            content: Text('任務完成！🎉 獲得經驗值+10，大樹成長了！'),
             backgroundColor: Colors.green,
           ),
         );
@@ -4193,48 +4189,6 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
     return '結出了豐碩的果實';
   }
 
-  Future<void> _updatePetStatus(String userId) async {
-    if (_isDisposed) return;
-
-    try {
-      DocumentSnapshot petDoc = await FirebaseFirestore.instance
-          .collection('pets')
-          .doc(userId)
-          .get();
-
-      Map<String, dynamic> petData = {};
-      if (petDoc.exists) {
-        petData = petDoc.data() as Map<String, dynamic>;
-      }
-
-      int currentExp = petData['experience'] ?? 0;
-      int currentHappiness = petData['happiness'] ?? 50;
-      int currentLevel = petData['level'] ?? 1;
-
-      int newExp = currentExp + 5;
-      int newHappiness = (currentHappiness + 5).clamp(0, 100);
-      int newLevel = currentLevel;
-
-      // 寵物升級邏輯
-      if (newExp >= 100) {
-        newLevel += 1;
-        newExp = 0;
-      }
-
-      if (!_isDisposed) {
-        await FirebaseFirestore.instance.collection('pets').doc(userId).set({
-          'name': petData['name'] ?? '小花',
-          'level': newLevel,
-          'experience': newExp,
-          'happiness': newHappiness,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-    } catch (e) {
-      print('更新寵物狀態失敗: $e');
-    }
-  }
-
   void _openTaskDetail(String taskTitle) {
     if (_isDisposed) return;
 
@@ -4244,7 +4198,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
       case '喝足夠的水':
         taskWidget = DrinkingTask(onCompleted: () => _completeTask(taskTitle));
         break;
-      case '運動10分鐘':
+      case '運動30分鐘':
         taskWidget = ExerciseTask(onCompleted: () => _completeTask(taskTitle));
         break;
       case '冥想5分鐘':
@@ -4294,386 +4248,307 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
               return Center(child: Text('載入進度時發生錯誤'));
             }
 
-            return StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('pets')
-                  .doc(userId)
-                  .snapshots(),
-              builder: (context, petSnapshot) {
-                // 錯誤處理
-                if (petSnapshot.hasError) {
-                  print('Pet stream error: ${petSnapshot.error}');
-                  return Center(child: Text('載入寵物資料時發生錯誤'));
-                }
+            // 檢查組件狀態
+            if (_isDisposed) {
+              return SizedBox.shrink();
+            }
 
-                // 檢查組件狀態
-                if (_isDisposed) {
-                  return SizedBox.shrink();
-                }
+            // 處理今日任務數據
+            Map<String, bool> taskCompletions = {};
+            if (taskSnapshot.hasData && taskSnapshot.data != null) {
+              for (var doc in taskSnapshot.data!.docs) {
+                var data = doc.data() as Map<String, dynamic>;
+                taskCompletions[data['taskTitle']] = data['isCompleted'] ?? false;
+              }
+            }
 
-                // 處理今日任務數據
-                Map<String, bool> taskCompletions = {};
-                if (taskSnapshot.hasData && taskSnapshot.data != null) {
-                  for (var doc in taskSnapshot.data!.docs) {
-                    var data = doc.data() as Map<String, dynamic>;
-                    taskCompletions[data['taskTitle']] = data['isCompleted'] ?? false;
-                  }
-                }
+            int todayCompletedTasks = taskCompletions.values.where((completed) => completed).length;
 
-                int todayCompletedTasks = taskCompletions.values.where((completed) => completed).length;
+            // 處理總體進度數據
+            Map<String, dynamic> progressData = {};
+            if (progressSnapshot.hasData && progressSnapshot.data!.exists) {
+              progressData = progressSnapshot.data!.data() as Map<String, dynamic>;
+            }
 
-                // 處理總體進度數據
-                Map<String, dynamic> progressData = {};
-                if (progressSnapshot.hasData && progressSnapshot.data!.exists) {
-                  progressData = progressSnapshot.data!.data() as Map<String, dynamic>;
-                }
+            int totalTasksCompleted = progressData['totalTasksCompleted'] ?? 0;
+            int totalExperience = progressData['totalExperience'] ?? 0;
+            int currentLevel = progressData['currentLevel'] ?? 1;
+            int consecutiveDays = progressData['consecutiveDays'] ?? 0;
 
-                int totalTasksCompleted = progressData['totalTasksCompleted'] ?? 0;
-                int totalExperience = progressData['totalExperience'] ?? 0;
-                int currentLevel = progressData['currentLevel'] ?? 1;
-                int consecutiveDays = progressData['consecutiveDays'] ?? 0;
+            final List<Map<String, dynamic>> tasks = [
+              {'title': '喝足夠的水', 'subtitle': '每日5杯，每杯250毫升', 'icon': Icons.local_drink, 'color': Colors.amber},
+              {'title': '運動30分鐘', 'subtitle': '簡單伸展', 'icon': Icons.fitness_center, 'color': Colors.green},
+              {'title': '冥想5分鐘', 'subtitle': '放鬆心情', 'icon': Icons.self_improvement, 'color': Colors.purple},
+              {'title': '感恩練習', 'subtitle': '記錄感恩的事', 'icon': Icons.favorite, 'color': Colors.pink},
+            ];
 
-                // 處理寵物數據
-                Map<String, dynamic> petData = {};
-                if (petSnapshot.hasData && petSnapshot.data!.exists) {
-                  petData = petSnapshot.data!.data() as Map<String, dynamic>;
-                } else {
-                  petData = {
-                    'name': '小花',
-                    'level': 1,
-                    'experience': 0,
-                    'happiness': 50,
-                  };
-                }
+            return Scaffold(
+              backgroundColor: _getBackgroundColor(totalTasksCompleted),
+              body: SingleChildScrollView(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    // 標題
+                    Text(
+                      '成長花園 🌱',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[800],
+                      ),
+                    ),
+                    SizedBox(height: 20),
 
-                final List<Map<String, dynamic>> tasks = [
-                  {'title': '喝足夠的水', 'subtitle': '8杯水', 'icon': Icons.local_drink, 'color': Colors.amber},
-                  {'title': '運動10分鐘', 'subtitle': '簡單伸展', 'icon': Icons.fitness_center, 'color': Colors.green},
-                  {'title': '冥想5分鐘', 'subtitle': '放鬆心情', 'icon': Icons.self_improvement, 'color': Colors.purple},
-                  {'title': '感恩練習', 'subtitle': '記錄感恩的事', 'icon': Icons.favorite, 'color': Colors.pink},
-                ];
-
-                return Scaffold(
-                  backgroundColor: _getBackgroundColor(totalTasksCompleted),
-                  body: SingleChildScrollView(
-                    padding: EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        // 標題
-                        Text(
-                          '成長花園 🌱',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green[800],
+                    // 總體進度卡片（成長樹展示）
+                    Container(
+                      padding: EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: Offset(0, 2),
                           ),
-                        ),
-                        SizedBox(height: 20),
-
-                        // 總體進度卡片
-                        Container(
-                          padding: EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(15),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 10,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            '我的成長之樹',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[800],
+                            ),
                           ),
-                          child: Column(
-                            children: [
-                              Text(
-                                '我的成長歷程',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green[800],
-                                ),
-                              ),
-                              SizedBox(height: 15),
+                          SizedBox(height: 15),
 
-                              // 成長樹展示 - 安全的動畫
-                              AnimatedBuilder(
-                                animation: _scaleAnimation,
-                                builder: (context, child) {
-                                  if (_isDisposed) return SizedBox.shrink();
+                          // 成長樹展示 - 安全的動畫
+                          AnimatedBuilder(
+                            animation: _scaleAnimation,
+                            builder: (context, child) {
+                              if (_isDisposed) return SizedBox.shrink();
 
-                                  return Transform.scale(
-                                    scale: _scaleAnimation.value,
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          _getTreeStage(totalTasksCompleted, currentLevel),
-                                          style: TextStyle(fontSize: 64),
-                                        ),
-                                        SizedBox(height: 8),
-                                        Text(
-                                          _getGrowthDescription(totalTasksCompleted),
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.green[600],
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
+                              return Transform.scale(
+                                scale: _scaleAnimation.value,
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      _getTreeStage(totalTasksCompleted, currentLevel),
+                                      style: TextStyle(fontSize: 80),
                                     ),
-                                  );
-                                },
-                              ),
-
-                              SizedBox(height: 20),
-
-                              // 進度統計
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  _buildStatCard('總任務', '$totalTasksCompleted', Icons.task_alt, Colors.amber),
-                                  _buildStatCard('等級', '$currentLevel', Icons.star, Colors.orange),
-                                  _buildStatCard('連續天數', '$consecutiveDays', Icons.local_fire_department, Colors.red),
-                                ],
-                              ),
-
-                              SizedBox(height: 15),
-
-                              // 經驗值進度條
-                              Column(
-                                children: [
-                                  Text('總經驗值: $totalExperience'),
-                                  SizedBox(height: 5),
-                                  LinearProgressIndicator(
-                                    value: (totalExperience % 100) / 100.0,
-                                    backgroundColor: Colors.grey[300],
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green[400]!),
-                                  ),
-                                  SizedBox(height: 5),
-                                  Text(
-                                    '距離下個里程碑: ${100 - (totalExperience % 100)} 經驗值',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        SizedBox(height: 20),
-
-                        // 寵物和今日進度區域
-                        Container(
-                          padding: EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(15),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 10,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              Text(
-                                '今日夥伴狀態',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.amber[800],
-                                ),
-                              ),
-                              SizedBox(height: 15),
-
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  // 寵物區域
-                                  Column(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 30,
-                                        backgroundColor: Colors.pink[100],
-                                        child: Icon(Icons.pets, size: 30, color: Colors.pink[400]),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      _getGrowthDescription(totalTasksCompleted),
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.green[600],
+                                        fontWeight: FontWeight.w500,
                                       ),
-                                      SizedBox(height: 8),
-                                      Text(petData['name'] ?? '小花', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      Text('Level ${petData['level'] ?? 1}', style: TextStyle(color: Colors.grey[600])),
-                                    ],
-                                  ),
-                                  // 今日進度
-                                  Column(
-                                    children: [
-                                      Text('今日進度', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      SizedBox(height: 8),
-                                      Text(
-                                        '$todayCompletedTasks/4',
-                                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green[600]),
-                                      ),
-                                      Text('已完成任務', style: TextStyle(color: Colors.grey[600])),
-                                    ],
-                                  ),
-                                ],
-                              ),
-
-                              SizedBox(height: 15),
-
-                              // 寵物狀態條
-                              Column(
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text('經驗值: ${petData['experience'] ?? 0}/100'),
-                                      Spacer(),
-                                      Text('快樂值: ${petData['happiness'] ?? 50}/100'),
-                                    ],
-                                  ),
-                                  SizedBox(height: 5),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: LinearProgressIndicator(
-                                          value: (petData['experience'] ?? 0) / 100.0,
-                                          backgroundColor: Colors.grey[300],
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.amber[400]!),
-                                        ),
-                                      ),
-                                      SizedBox(width: 20),
-                                      Expanded(
-                                        child: LinearProgressIndicator(
-                                          value: (petData['happiness'] ?? 50) / 100.0,
-                                          backgroundColor: Colors.grey[300],
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.orange[400]!),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        SizedBox(height: 20),
-
-                        // 今日任務進度條
-                        Container(
-                          width: double.infinity,
-                          height: 15,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: Colors.grey[300],
-                          ),
-                          child: FractionallySizedBox(
-                            alignment: Alignment.centerLeft,
-                            widthFactor: todayCompletedTasks / 4,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
-                                gradient: LinearGradient(
-                                  colors: [Colors.lightBlue, Colors.green.shade400],
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
-                        ),
 
-                        SizedBox(height: 20),
-
-                        // 任務列表
-                        Text(
-                          '今日任務',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.amber[800],
-                          ),
-                        ),
-                        SizedBox(height: 15),
-
-                        ...tasks.map((task) {
-                          bool isCompleted = taskCompletions[task['title']] ?? false;
-                          return Container(
-                            margin: EdgeInsets.only(bottom: 12),
-                            child: Card(
-                              elevation: 4,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: task['color'][400],
-                                  child: Icon(task['icon'], color: Colors.white),
-                                ),
-                                title: Text(
-                                  task['title'],
-                                  style: TextStyle(
-                                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                                    color: isCompleted ? Colors.grey : Colors.black87,
-                                  ),
-                                ),
-                                subtitle: Text(task['subtitle']),
-                                trailing: isCompleted
-                                    ? Container(
-                                  padding: EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green[100],
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(Icons.check, color: Colors.green[700], size: 20),
-                                )
-                                    : ElevatedButton(
-                                  onPressed: () => _openTaskDetail(task['title']),
-                                  child: Text('開始'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: task['color'][400],
-                                    foregroundColor: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-
-                        // 完成慶祝區域
-                        if (todayCompletedTasks >= 4) ...[
                           SizedBox(height: 20),
+
+                          // 進度統計
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildStatCard('總任務', '$totalTasksCompleted', Icons.task_alt, Colors.amber),
+                              _buildStatCard('等級', '$currentLevel', Icons.star, Colors.orange),
+                              _buildStatCard('連續天數', '$consecutiveDays', Icons.local_fire_department, Colors.red),
+                            ],
+                          ),
+
+                          SizedBox(height: 15),
+
+                          // 經驗值進度條
+                          Column(
+                            children: [
+                              Text('總經驗值: $totalExperience'),
+                              SizedBox(height: 5),
+                              LinearProgressIndicator(
+                                value: (totalExperience % 100) / 100.0,
+                                backgroundColor: Colors.grey[300],
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.green[400]!),
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                '距離下個里程碑: ${100 - (totalExperience % 100)} 經驗值',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    SizedBox(height: 20),
+
+                    // 今日進度
+                    Container(
+                      padding: EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            '今日進度',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber[800],
+                            ),
+                          ),
+                          SizedBox(height: 15),
+
+                          // 今日進度顯示
+                          Text(
+                            '$todayCompletedTasks/4',
+                            style: TextStyle(
+                                fontSize: 36,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green[600]
+                            ),
+                          ),
+                          Text(
+                              '已完成任務',
+                              style: TextStyle(color: Colors.grey[600])
+                          ),
+
+                          SizedBox(height: 15),
+
+                          // 今日任務進度條
                           Container(
                             width: double.infinity,
-                            padding: EdgeInsets.all(20),
+                            height: 15,
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [Colors.yellow.shade100, Colors.orange.shade100],
-                              ),
-                              borderRadius: BorderRadius.circular(15),
-                              border: Border.all(color: Colors.orange, width: 2),
+                              borderRadius: BorderRadius.circular(8),
+                              color: Colors.grey[300],
                             ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  '🎊 今日任務全部完成！ 🎊',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange,
+                            child: FractionallySizedBox(
+                              alignment: Alignment.centerLeft,
+                              widthFactor: todayCompletedTasks / 4,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  gradient: LinearGradient(
+                                    colors: [Colors.lightBlue, Colors.green.shade400],
                                   ),
                                 ),
-                                SizedBox(height: 10),
-                                Text(
-                                  '你的寵物和樹都成長了！\n總完成任務: $totalTasksCompleted 個\n明天繼續加油！',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                );
-              },
+
+                    SizedBox(height: 20),
+
+                    // 任務列表
+                    Text(
+                      '今日任務',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber[800],
+                      ),
+                    ),
+                    SizedBox(height: 15),
+
+                    ...tasks.map((task) {
+                      bool isCompleted = taskCompletions[task['title']] ?? false;
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 12),
+                        child: Card(
+                          elevation: 4,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: task['color'][400],
+                              child: Icon(task['icon'], color: Colors.white),
+                            ),
+                            title: Text(
+                              task['title'],
+                              style: TextStyle(
+                                decoration: isCompleted ? TextDecoration.lineThrough : null,
+                                color: isCompleted ? Colors.grey : Colors.black87,
+                              ),
+                            ),
+                            subtitle: Text(task['subtitle']),
+                            trailing: isCompleted
+                                ? Container(
+                              padding: EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.green[100],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.check, color: Colors.green[700], size: 20),
+                            )
+                                : ElevatedButton(
+                              onPressed: () => _openTaskDetail(task['title']),
+                              child: Text('開始'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: task['color'][400],
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+
+                    // 完成慶祝區域
+                    if (todayCompletedTasks >= 4) ...[
+                      SizedBox(height: 20),
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.yellow.shade100, Colors.orange.shade100],
+                          ),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.orange, width: 2),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              '🎊 今日任務全部完成！ 🎊',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              '你的成長之樹又長高了！\n總完成任務: $totalTasksCompleted 個\n明天繼續加油！',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             );
           },
         );
@@ -4712,6 +4587,7 @@ class _IntegratedGrowthPageState extends State<IntegratedGrowthPage> with Ticker
     );
   }
 }
+
 class SafeStatefulWidget extends StatefulWidget {
   @override
   _SafeStatefulWidgetState createState() => _SafeStatefulWidgetState();
@@ -5233,7 +5109,7 @@ class DrinkingTask extends StatefulWidget {
 
 class _DrinkingTaskState extends State<DrinkingTask> {
   int glasses = 0;
-  final int targetGlasses = 8;
+  final int targetGlasses = 5;
 
   @override
   Widget build(BuildContext context) {
@@ -5310,6 +5186,7 @@ class _DrinkingTaskState extends State<DrinkingTask> {
 }
 
 // 運動任務
+// 運動任務 - 修改為確認制
 class ExerciseTask extends StatefulWidget {
   final VoidCallback onCompleted;
 
@@ -5320,42 +5197,120 @@ class ExerciseTask extends StatefulWidget {
 }
 
 class _ExerciseTaskState extends State<ExerciseTask> {
-  int seconds = 0;
-  final int targetSeconds = 600; // 10分鐘
-  bool isRunning = false;
-  Timer? timer;
+  // 處理完成按鈕點擊
+  void _handleCompletion() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green[600]),
+            SizedBox(width: 8),
+            Text('確認完成'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('您確定已達成以下目標嗎？', style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 12),
+            _buildDialogCheckItem('運動時間滿 30 分鐘'),
+            SizedBox(height: 8),
+            _buildDialogCheckItem('心跳達到 130 次/分'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('還沒', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context); // 關閉對話框
+              widget.onCompleted(); // 執行完成回調
+              Navigator.pop(context); // 關閉任務頁面
 
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
+              // 顯示額外的鼓勵訊息
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('太棒了！身體會感謝你的付出 💪'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[600],
+              foregroundColor: Colors.white,
+            ),
+            child: Text('是的，我完成了'),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _toggleTimer() {
-    if (isRunning) {
-      timer?.cancel();
-    } else {
-      timer = Timer.periodic(Duration(seconds: 1), (timer) {
-        setState(() {
-          seconds++;
-          if (seconds >= targetSeconds) {
-            timer.cancel();
-            isRunning = false;
-            widget.onCompleted();
-            Navigator.of(context).pop();
-          }
-        });
-      });
-    }
-    setState(() {
-      isRunning = !isRunning;
-    });
+  Widget _buildDialogCheckItem(String text) {
+    return Row(
+      children: [
+        Icon(Icons.check, size: 16, color: Colors.green),
+        SizedBox(width: 8),
+        Text(text),
+      ],
+    );
   }
 
-  String _formatTime(int seconds) {
-    int minutes = seconds ~/ 60;
-    int remainingSeconds = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  Widget _buildRequirementCard(String title, String value, IconData icon) {
+    return Container(
+      padding: EdgeInsets.all(20),
+      margin: EdgeInsets.only(bottom: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.green[600], size: 28),
+          ),
+          SizedBox(width: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -5368,59 +5323,104 @@ class _ExerciseTaskState extends State<ExerciseTask> {
       ),
       body: Container(
         color: Colors.green[50],
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '運動計時器',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 20),
-                Text(
-                  _formatTime(seconds),
-                  style: TextStyle(fontSize: 64, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 10),
-                Text(
-                  '目標：${_formatTime(targetSeconds)}',
-                  style: TextStyle(fontSize: 18),
-                ),
-                SizedBox(height: 30),
-                LinearProgressIndicator(
-                  value: seconds / targetSeconds,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey[300],
-                  color: Colors.green,
-                ),
-                SizedBox(height: 40),
-                ElevatedButton(
-                  onPressed: seconds < targetSeconds ? _toggleTimer : null,
-                  child: Text(
-                    isRunning ? '暫停 ⏸️' : '開始運動 ▶️',
-                    style: TextStyle(fontSize: 18),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 頂部圖示區域
+              Center(
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  margin: EdgeInsets.symmetric(vertical: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.green.withOpacity(0.3), width: 4),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[600],
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  child: Icon(
+                    Icons.directions_run,
+                    size: 60,
+                    color: Colors.green[600],
                   ),
                 ),
-                SizedBox(height: 20),
-                if (seconds >= targetSeconds)
-                  Text(
-                    '🎉 太棒了！你完成了運動目標！',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
+              ),
+
+              Text(
+                '今日運動目標',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green[800],
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '請在完成以下兩項指標後點擊確認',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+              SizedBox(height: 30),
+
+              // 指標卡片
+              _buildRequirementCard('運動時長', '30 分鐘以上', Icons.timer),
+              _buildRequirementCard('目標心率', '達 130 次/分', Icons.favorite),
+
+              SizedBox(height: 10),
+
+              // 安全提示
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange[700], size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '請量力而為，若感到身體不適請立即停止運動並休息。',
+                        style: TextStyle(fontSize: 12, color: Colors.orange[800]),
+                      ),
                     ),
-                    textAlign: TextAlign.center,
+                  ],
+                ),
+              ),
+
+              SizedBox(height: 40),
+
+              // 確認按鈕
+              ElevatedButton(
+                onPressed: _handleCompletion,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline),
+                      SizedBox(width: 8),
+                      Text(
+                        '我已完成運動',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
-              ],
-            ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green[600],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  elevation: 4,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -6609,16 +6609,16 @@ class _HealingQuotePageState extends State<HealingQuotePage> with SingleTickerPr
   int currentQuoteIndex = 0;
 
   final List<Map<String, String>> quotes = [
-    {'quote': '每一個今天，都是餘生的第一天', 'author': '匿名'},
-    {'quote': '你比你想像的更勇敢，比你看起來更強壯', 'author': '小熊維尼'},
-    {'quote': '黑暗中，一點點光就足以照亮前路', 'author': '匿名'},
-    {'quote': '治癒自己是一種超能力', 'author': '匿名'},
-    {'quote': '每個結束都是新的開始', 'author': '匿名'},
-    {'quote': '你的價值不取決於別人的認可', 'author': '匿名'},
-    {'quote': '今天的雨是明天彩虹的開始', 'author': '匿名'},
-    {'quote': '接受自己的不完美，是完美的開始', 'author': '匿名'},
-    {'quote': '內心平靜比什麼都重要', 'author': '匿名'},
-    {'quote': '小小的進步也是進步', 'author': '匿名'},
+    {'quote': '萬物皆有裂痕，那是光照進來的地方。', 'author': '李歐納·柯恩 (Leonard Cohen)'},
+    {'quote': '世上只有一種真正的英雄主義，那就是認清生活的真相後依然熱愛生活。', 'author': '羅曼·羅蘭 (Romain Rolland)'},
+    {'quote': '生活總是讓我們遍體鱗傷，但到後來，那些受傷的地方一定會變成我們最强壯的地方。', 'author': '海明威 (Ernest Hemingway)'},
+    {'quote': '如果你總是低著頭，那麼你永遠無法看見彩虹。', 'author': '查理·卓別林 (Charlie Chaplin)'},
+    {'quote': '如果你因失去了太陽而流淚，那麼你也將失去群星了。', 'author': '泰戈爾 (Rabindranath Tagore)'},
+    {'quote': '所有的悲傷，總會留下一絲歡樂的線索。所有的遺憾，總會留下一處完美的角落。', 'author': '幾米 (Jimmy Liao)'},
+    {'quote': '你比你想像的更勇敢，比你看起來更強壯，也比你覺得的更聰明。', 'author': '艾倫·亞歷山大·米恩'},
+    {'quote': '當你穿過暴風雨，你就不再是原來的那個人。', 'author': '村上春樹'},
+    {'quote': '沒有什麼事是過不去的，只有再也回不去。', 'author': '張愛玲'},
+    {'quote': '在隆冬，我終於發現，我身上有一個不可戰勝的夏天。', 'author': '卡謬 (Albert Camus)'},
   ];
 
   @override
